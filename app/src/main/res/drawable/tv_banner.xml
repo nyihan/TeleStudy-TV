@@ -1,0 +1,68 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- Deep TV Background -->
+    <path
+        android:fillColor="#0A101D"
+        android:pathData="M0,0h320v180h-320z" />
+
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M16,16h288v148h-288z" />
+
+    <!-- Ambient Cyan Accent Line along bottom of card -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M16,161h288v3h-288z" />
+
+    <!-- TeleStudy Logo Emblem on the left: center (80, 88) -->
+    <!-- Graduation Cap Top -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M80,48 L108,60 L80,72 L52,60 Z" />
+    <path
+        android:fillColor="#D97706"
+        android:pathData="M64,65 L64,72 C64,78 71,81 80,81 C89,81 96,78 96,72 L96,65 C91,69 86,71 80,71 C74,71 69,69 64,65 Z" />
+    <path
+        android:fillColor="#FEF08A"
+        android:pathData="M78,59 A2,2 0 1,1 82,59 A2,2 0 1,1 78,59 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FDE047"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M80,59 Q94,61 103,70" />
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M101,69 L105,69 L104,78 L102,78 Z" />
+
+    <!-- TV Display with Cyan Border -->
+    <path
+        android:fillColor="#0A101D"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2.5"
+        android:pathData="M56,84 L104,84 A4,4 0 0,1 108,88 L108,118 A4,4 0 0,1 104,122 L56,122 A4,4 0 0,1 52,118 L52,88 A4,4 0 0,1 56,84 Z" />
+
+    <!-- Play Icon inside TV -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M75,96 L91,104 L75,112 Z" />
+
+    <!-- TV Stand -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M78,122 L82,122 L82,126 L78,126 Z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M68,126 L92,126 A1.5,1.5 0 0,1 93.5,127.5 L93.5,128 L66.5,128 L66.5,127.5 A1.5,1.5 0 0,1 68,126 Z" />
+
+    <!-- Decorative Educational Dot Indicators -->
+    <path android:fillColor="#00E5FF" android:pathData="M136,54 A3,3 0 1,1 142,54 A3,3 0 1,1 136,54 Z" />
+    <path android:fillColor="#F59E0B" android:pathData="M148,54 A3,3 0 1,1 154,54 A3,3 0 1,1 148,54 Z" />
+    <path android:fillColor="#10B981" android:pathData="M160,54 A3,3 0 1,1 166,54 A3,3 0 1,1 160,54 Z" />
+
+</vector>

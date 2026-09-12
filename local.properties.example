@@ -1,0 +1,7 @@
+## TeleStudy TV - Local Configuration Template
+# Obtain your TELEGRAM_API_ID and TELEGRAM_API_HASH from https://my.telegram.org
+TELEGRAM_API_ID=0
+TELEGRAM_API_HASH=
+
+# Location of the Android SDK
+sdk.dir=C\:\\Users\\nyi\\AppData\\Local\\Android\\Sdk

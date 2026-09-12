@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TeleStudy TV</string>
+    <string name="phase1_title">TeleStudy TV — Multi-Device Core</string>
+    <string name="device_type_label">Detected Platform</string>
+    <string name="tdlib_status_label">TDLib Native Status</string>
+    <string name="api_status_label">API Credentials Status</string>
+    <string name="tdlib_loaded_success">TDLib v1.8.56 Native Library Loaded Successfully (tdjni)</string>
+    <string name="tdlib_load_failed">TDLib Native Library Failed to Load</string>
+    <string name="api_configured">Configured</string>
+    <string name="api_missing">Missing API_ID / API_HASH in local.properties</string>
+    <string name="phone_test_ready">Phone-First Core: Ready</string>
+    <string name="tv_test_ready">Android TV 10-Foot: Ready</string>
+</resources>

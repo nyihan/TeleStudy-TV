@@ -1,0 +1,68 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Subtle Shadow Under Cap -->
+    <path
+        android:fillColor="#33000000"
+        android:pathData="M28,40 L54,51 L80,40 L54,30 Z" />
+
+    <!-- Graduation Cap Top (Mortarboard Rhombus) -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M54,26 L80,37 L54,48 L28,37 Z" />
+
+    <!-- Cap Depth / Lower Face -->
+    <path
+        android:fillColor="#D97706"
+        android:pathData="M38,41 L38,47 C38,52 45,55 54,55 C63,55 70,52 70,47 L70,41 C65,45 59,47 54,47 C49,47 43,45 38,41 Z" />
+
+    <!-- Cap Button & Tassel -->
+    <path
+        android:fillColor="#FEF08A"
+        android:pathData="M52,36 A2,2 0 1,1 56,36 A2,2 0 1,1 52,36 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FDE047"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M54,36 Q68,38 76,46" />
+    <path
+        android:fillColor="#FDE047"
+        android:pathData="M74,45 L78,45 L77,53 L75,53 Z" />
+
+    <!-- TV Display Container -->
+    <!-- TV Outer Bezel -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M34,56 L74,56 A4,4 0 0,1 78,60 L78,82 A4,4 0 0,1 74,86 L34,86 A4,4 0 0,1 30,82 L30,60 A4,4 0 0,1 34,56 Z" />
+
+    <!-- TV Cyan Border Accent -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="2"
+        android:pathData="M34,56 L74,56 A4,4 0 0,1 78,60 L78,82 A4,4 0 0,1 74,86 L34,86 A4,4 0 0,1 30,82 L30,60 A4,4 0 0,1 34,56 Z" />
+
+    <!-- TV Screen Inner Surface -->
+    <path
+        android:fillColor="#1E293B"
+        android:pathData="M34,59 L74,59 A2,2 0 0,1 76,61 L76,79 A2,2 0 0,1 74,81 L34,81 A2,2 0 0,1 32,79 L32,61 A2,2 0 0,1 34,59 Z" />
+
+    <!-- Play Symbol in Cyan -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M50,65 L62,71 L50,77 Z" />
+
+    <!-- TV Stand Neck & Base -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M52,86 L56,86 L56,89 L52,89 Z" />
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M44,89 L64,89 A1.5,1.5 0 0,1 65.5,90.5 L65.5,91 A1,1 0 0,1 64.5,92 L43.5,92 A1,1 0 0,1 42.5,91 L42.5,90.5 A1.5,1.5 0 0,1 44,89 Z" />
+
+</vector>

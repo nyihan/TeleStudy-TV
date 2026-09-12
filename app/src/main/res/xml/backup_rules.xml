@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude private TDLib session databases and file caches from auto-backup -->
+    <exclude domain="file" path="tdlib" />
+    <exclude domain="database" path="tdlib" />
+</full-backup-content>
