@@ -25,7 +25,7 @@ enum class AuthTab {
 data class AuthUiState(
     val authState: AuthState = AuthState.Initial,
     val selectedTab: AuthTab = AuthTab.PHONE,
-    val phoneNumber: String = "",
+    val phoneNumber: String = "+",
     val code: String = "",
     val password: String = "",
     val isPasswordVisible: Boolean = false,
@@ -107,8 +107,9 @@ class AuthViewModel(
 
     fun submitPhoneNumber() {
         val rawNumber = _uiState.value.phoneNumber.trim()
-        if (rawNumber.isEmpty() || rawNumber.length < 5) {
-            _uiState.update { it.copy(errorMessage = "Please enter a valid phone number with country code (e.g. +1234567890)") }
+        val digitsOnly = rawNumber.filter { it.isDigit() }
+        if (rawNumber.isEmpty() || rawNumber == "+" || digitsOnly.length < 5) {
+            _uiState.update { it.copy(errorMessage = "Please enter a valid phone number with country code (e.g. +959...)") }
             return
         }
 

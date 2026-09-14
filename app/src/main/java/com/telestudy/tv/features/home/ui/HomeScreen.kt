@@ -5,8 +5,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -15,10 +18,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -28,22 +34,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.telestudy.tv.core.device.DeviceType
 import com.telestudy.tv.core.device.LocalDeviceType
 import com.telestudy.tv.data.sync.SyncState
+import com.telestudy.tv.domain.model.TelegramChat
 import com.telestudy.tv.domain.model.TelegramVideo
+import com.telestudy.tv.domain.model.WatchProgress
 import com.telestudy.tv.features.home.HomeViewModel
 import com.telestudy.tv.features.home.ui.components.ContinueWatchingCard
 import com.telestudy.tv.features.home.ui.components.SubjectCard
 import com.telestudy.tv.features.home.ui.components.TvSearchKeyboard
 import com.telestudy.tv.features.home.ui.components.VideoCard
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,8 +73,15 @@ fun HomeScreen(
         uiState.subjects.filter { it.videoCount > 0 }
     }
 
-    // Handle back button when search is open
-    BackHandler(enabled = uiState.isSearchActive || uiState.searchQuery.isNotBlank()) {
+    var activeLessonListSubject by remember { mutableStateOf<TelegramChat?>(null) }
+
+    // Priority 1: Back key exits Group Lesson List view and returns to Home
+    BackHandler(enabled = activeLessonListSubject != null) {
+        activeLessonListSubject = null
+    }
+
+    // Priority 2: Back key closes search when active
+    BackHandler(enabled = (uiState.isSearchActive || uiState.searchQuery.isNotBlank()) && activeLessonListSubject == null) {
         viewModel.setSearchActive(false)
         viewModel.updateSearchQuery("")
     }
@@ -73,188 +92,202 @@ fun HomeScreen(
             .background(Color(0xFF0A0E17))
             .padding(horizontal = if (isTv) 32.dp else 16.dp, vertical = if (isTv) 8.dp else 16.dp)
     ) {
-        // --- 1. Top Bar: Branding, Sync Status, Actions ---
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = "TeleStudy TV",
-                    color = Color.White,
-                    fontSize = if (isTv) 26.sp else 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                // Sync status indicator
-                when (val sync = uiState.syncState) {
-                    is SyncState.Syncing -> {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 2.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(12.dp),
-                                strokeWidth = 2.dp,
-                                color = Color(0xFF00E5FF)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = sync.message,
-                                color = Color(0xFF00E5FF),
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                    is SyncState.Success -> {
-                        Text(
-                            text = "● Auto-synced with Telegram",
-                            color = Color(0xFF10B981),
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                    is SyncState.Error -> {
-                        Text(
-                            text = "Sync: ${sync.message}",
-                            color = Color(0xFFEF4444),
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                    is SyncState.Idle -> {
-                        Text(
-                            text = "Ready",
-                            color = Color(0xFF64748B),
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 2.dp)
-                        )
-                    }
-                }
-            }
-
-            // Quick Actions
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { viewModel.setSearchActive(!uiState.isSearchActive) }) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = if (uiState.isSearchActive) Color(0xFF00E5FF) else Color(0xFF94A3B8)
-                    )
-                }
-                IconButton(onClick = { viewModel.triggerAutoSync() }) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Sync",
-                        tint = Color(0xFF94A3B8)
-                    )
-                }
-                TextButton(onClick = onNavigateToDiscovery) {
-                    Text("All Chats (${uiState.subjects.size})", color = Color(0xFF64748B), fontSize = 12.sp)
-                }
-                TextButton(onClick = onNavigateToSpike) {
-                    Text("Spike", color = Color(0xFF64748B), fontSize = 12.sp)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        val focusManager = LocalFocusManager.current
-        val searchInteractionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-        val isSearchPressed by searchInteractionSource.collectIsPressedAsState()
-        val isSearchFocused by searchInteractionSource.collectIsFocusedAsState()
-
-        LaunchedEffect(isSearchPressed, isSearchFocused) {
-            if (isSearchPressed || (isSearchFocused && isTv)) {
-                viewModel.setSearchActive(true)
-            }
-        }
-
-        // --- 2. Search Input Field ---
-        OutlinedTextField(
-            value = uiState.searchQuery,
-            readOnly = false,
-            interactionSource = searchInteractionSource,
-            onValueChange = {
-                viewModel.updateSearchQuery(it)
-                if (!uiState.isSearchActive) viewModel.setSearchActive(true)
-            },
-            placeholder = { Text("Search lessons, subjects, numbers (e.g. Lesson 33, Time)...", fontSize = 13.sp) },
-            leadingIcon = {
-                IconButton(onClick = { viewModel.setSearchActive(!uiState.isSearchActive) }) {
-                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF00E5FF))
-                }
-            },
-            trailingIcon = {
-                if (uiState.searchQuery.isNotEmpty()) {
-                    IconButton(onClick = {
-                        viewModel.updateSearchQuery("")
-                        viewModel.setSearchActive(false)
-                    }) {
-                        Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF94A3B8))
-                    }
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(if (isTv) 46.dp else 52.dp)
-                .clickable {
-                    viewModel.setSearchActive(true)
-                }
-                .onFocusChanged {
-                    if (it.isFocused && isTv) {
-                        viewModel.setSearchActive(true)
-                    }
-                }
-                .onPreviewKeyEvent { keyEvent ->
-                    if (keyEvent.type == KeyEventType.KeyDown) {
-                        if (keyEvent.key == Key.DirectionDown) {
-                            focusManager.moveFocus(FocusDirection.Down)
-                            true
-                        } else if (keyEvent.key == Key.Enter || keyEvent.key == Key.DirectionCenter) {
-                            viewModel.setSearchActive(true)
-                            true
-                        } else false
-                    } else false
-                },
-            shape = RoundedCornerShape(8.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color(0xFF00E5FF),
-                unfocusedBorderColor = Color(0xFF334155),
-                focusedContainerColor = Color(0xFF0F172A),
-                unfocusedContainerColor = Color(0xFF0F172A),
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
-            ),
-            singleLine = true
-        )
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // --- 3. Main Content: Search Mode vs Netflix Shelves ---
-        if (uiState.isSearchActive || uiState.searchQuery.isNotBlank()) {
-            // --- SEARCH MODE ---
-            SearchContent(
-                uiState = uiState,
+        if (activeLessonListSubject != null) {
+            // --- GROUP LESSON LIST MODE (Full Viewport Multi-row Grid) ---
+            GroupLessonListContent(
+                subject = activeLessonListSubject!!,
+                lessons = uiState.lessons,
+                progressMap = uiState.progressMap,
                 isTv = isTv,
-                onChar = { viewModel.onKeyboardChar(it) },
-                onSpace = { viewModel.onKeyboardSpace() },
-                onBackspace = { viewModel.onKeyboardBackspace() },
-                onClear = { viewModel.onKeyboardClear() },
-                onPlayVideo = onPlayVideo
-            )
-        } else {
-            // --- NETFLIX-STYLE SHELVES ---
-            ShelvesContent(
-                uiState = uiState,
-                isTv = isTv,
-                subjectsWithVideos = subjectsWithVideos,
-                onSelectSubject = { viewModel.selectSubject(it) },
+                onBack = { activeLessonListSubject = null },
                 onPlayVideo = onPlayVideo,
                 onTriggerAutoSync = { viewModel.triggerAutoSync() }
             )
+        } else {
+            // --- 1. Top Bar: Branding, Sync Status, Actions (Debug buttons removed) ---
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "TeleStudy TV",
+                        color = Color.White,
+                        fontSize = if (isTv) 26.sp else 22.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    // Sync status indicator
+                    when (val sync = uiState.syncState) {
+                        is SyncState.Syncing -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(top = 2.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color(0xFF00E5FF)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = sync.message,
+                                    color = Color(0xFF00E5FF),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        is SyncState.Success -> {
+                            Text(
+                                text = "● Auto-synced with Telegram",
+                                color = Color(0xFF10B981),
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        is SyncState.Error -> {
+                            Text(
+                                text = "Sync: ${sync.message}",
+                                color = Color(0xFFEF4444),
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        is SyncState.Idle -> {
+                            Text(
+                                text = "Ready",
+                                color = Color(0xFF64748B),
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Quick Actions (Cleaned: Search & Sync only, no debug buttons)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { viewModel.setSearchActive(!uiState.isSearchActive) }) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = if (uiState.isSearchActive) Color(0xFF00E5FF) else Color(0xFF94A3B8)
+                        )
+                    }
+                    IconButton(onClick = { viewModel.triggerAutoSync() }) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Sync",
+                            tint = Color(0xFF94A3B8)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val focusManager = LocalFocusManager.current
+            val searchInteractionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            val isSearchPressed by searchInteractionSource.collectIsPressedAsState()
+            val isSearchFocused by searchInteractionSource.collectIsFocusedAsState()
+
+            LaunchedEffect(isSearchPressed, isSearchFocused) {
+                if (isSearchPressed || (isSearchFocused && isTv)) {
+                    viewModel.setSearchActive(true)
+                }
+            }
+
+            // --- 2. Search Input Field ---
+            OutlinedTextField(
+                value = uiState.searchQuery,
+                readOnly = false,
+                interactionSource = searchInteractionSource,
+                onValueChange = {
+                    viewModel.updateSearchQuery(it)
+                    if (!uiState.isSearchActive) viewModel.setSearchActive(true)
+                },
+                placeholder = { Text("Search lessons, subjects, numbers (e.g. Lesson 33, Time)...", fontSize = 13.sp) },
+                leadingIcon = {
+                    IconButton(onClick = { viewModel.setSearchActive(!uiState.isSearchActive) }) {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF00E5FF))
+                    }
+                },
+                trailingIcon = {
+                    if (uiState.searchQuery.isNotEmpty()) {
+                        IconButton(onClick = {
+                            viewModel.updateSearchQuery("")
+                            viewModel.setSearchActive(false)
+                        }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF94A3B8))
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (isTv) 46.dp else 52.dp)
+                    .clickable {
+                        viewModel.setSearchActive(true)
+                    }
+                    .onFocusChanged {
+                        if (it.isFocused && isTv) {
+                            viewModel.setSearchActive(true)
+                        }
+                    }
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (keyEvent.type == KeyEventType.KeyDown) {
+                            if (keyEvent.key == Key.DirectionDown) {
+                                focusManager.moveFocus(FocusDirection.Down)
+                                true
+                            } else if (keyEvent.key == Key.Enter || keyEvent.key == Key.DirectionCenter) {
+                                viewModel.setSearchActive(true)
+                                true
+                            } else false
+                        } else false
+                    },
+                shape = RoundedCornerShape(8.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF00E5FF),
+                    unfocusedBorderColor = Color(0xFF334155),
+                    focusedContainerColor = Color(0xFF0F172A),
+                    unfocusedContainerColor = Color(0xFF0F172A),
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // --- 3. Main Content: Search Mode vs Netflix Shelves ---
+            if (uiState.isSearchActive || uiState.searchQuery.isNotBlank()) {
+                // --- SEARCH MODE ---
+                SearchContent(
+                    uiState = uiState,
+                    isTv = isTv,
+                    onChar = { viewModel.onKeyboardChar(it) },
+                    onSpace = { viewModel.onKeyboardSpace() },
+                    onBackspace = { viewModel.onKeyboardBackspace() },
+                    onClear = { viewModel.onKeyboardClear() },
+                    onPlayVideo = onPlayVideo
+                )
+            } else {
+                // --- NETFLIX-STYLE SHELVES ---
+                ShelvesContent(
+                    uiState = uiState,
+                    isTv = isTv,
+                    subjectsWithVideos = subjectsWithVideos,
+                    onSelectSubject = { subject ->
+                        viewModel.selectSubject(subject)
+                        activeLessonListSubject = subject
+                    },
+                    onOpenLessonList = { subject ->
+                        viewModel.selectSubject(subject)
+                        activeLessonListSubject = subject
+                    },
+                    onPlayVideo = onPlayVideo,
+                    onTriggerAutoSync = { viewModel.triggerAutoSync() }
+                )
+            }
         }
     }
 }
@@ -397,6 +430,7 @@ private fun ShelvesContent(
     isTv: Boolean,
     subjectsWithVideos: List<com.telestudy.tv.domain.model.TelegramChat>,
     onSelectSubject: (com.telestudy.tv.domain.model.TelegramChat) -> Unit,
+    onOpenLessonList: (com.telestudy.tv.domain.model.TelegramChat) -> Unit = {},
     onPlayVideo: (TelegramVideo) -> Unit,
     onTriggerAutoSync: () -> Unit
 ) {
@@ -498,7 +532,16 @@ private fun ShelvesContent(
                         fontWeight = FontWeight.Bold
                     )
 
-                    if (lessons.isNotEmpty()) {
+                    if (selected != null && lessons.isNotEmpty()) {
+                        TextButton(onClick = { onOpenLessonList(selected) }) {
+                            Text(
+                                text = "View All (${lessons.size}) →",
+                                color = Color(0xFF00E5FF),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    } else if (lessons.isNotEmpty()) {
                         Text(
                             text = "Ordered Sequentially",
                             color = Color(0xFF00E5FF),
@@ -590,3 +633,155 @@ private fun ShelvesContent(
         }
     }
 }
+
+// ─── Group Lesson List (TV Multi-row Grid with Smooth Remote Auto-Scroll) ────
+@Composable
+private fun GroupLessonListContent(
+    subject: TelegramChat,
+    lessons: List<TelegramVideo>,
+    progressMap: Map<Pair<Long, Long>, WatchProgress>,
+    isTv: Boolean,
+    onBack: () -> Unit,
+    onPlayVideo: (TelegramVideo) -> Unit,
+    onTriggerAutoSync: () -> Unit
+) {
+    val gridState = rememberLazyGridState()
+    val firstLessonRequester = remember { FocusRequester() }
+    val backInteractionSource = remember { MutableInteractionSource() }
+    val isBackFocused by backInteractionSource.collectIsFocusedAsState()
+
+    // Request initial focus on Lesson 1 when lessons are available
+    LaunchedEffect(subject.id, lessons.size) {
+        if (lessons.isNotEmpty()) {
+            delay(120L)
+            try {
+                firstLessonRequester.requestFocus()
+            } catch (_: Exception) {}
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        // --- Header with Back Button, Subject Title, and Badge ---
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBack,
+                interactionSource = backInteractionSource,
+                modifier = Modifier
+                    .size(if (isTv) 44.dp else 38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isBackFocused) Color(0xFF00E5FF) else Color(0xFF1E293B))
+                    .border(
+                        width = if (isBackFocused) 2.dp else 1.dp,
+                        color = if (isBackFocused) Color.White else Color(0xFF334155),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .focusable(interactionSource = backInteractionSource)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back to Home",
+                    tint = if (isBackFocused) Color.Black else Color(0xFF00E5FF)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = subject.title,
+                        color = Color.White,
+                        fontSize = if (isTv) 22.sp else 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF00E5FF).copy(alpha = 0.18f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "${lessons.size} Lessons",
+                            color = Color(0xFF00E5FF),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Text(
+                    text = "Navigate with TV remote D-pad • Press OK to play",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 12.sp
+                )
+            }
+
+            if (lessons.isNotEmpty()) {
+                Text(
+                    text = "● Ordered Sequentially",
+                    color = Color(0xFF10B981),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        // --- Multi-Row Lesson Grid ---
+        if (lessons.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Color(0xFF00E5FF), modifier = Modifier.size(36.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Loading lessons for ${subject.title}...",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = onTriggerAutoSync,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B))
+                    ) {
+                        Text("Check for Lessons", color = Color(0xFF00E5FF))
+                    }
+                }
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(if (isTv) 3 else 2),
+                state = gridState,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(bottom = 32.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                itemsIndexed(
+                    items = lessons,
+                    key = { _, video -> "${video.chatId}_${video.messageId}" }
+                ) { index, video ->
+                    val progress = progressMap[Pair(video.chatId, video.messageId)]
+                    VideoCard(
+                        video = video,
+                        onClick = { onPlayVideo(video) },
+                        watchProgress = progress,
+                        modifier = if (index == 0) Modifier.focusRequester(firstLessonRequester) else Modifier
+                    )
+                }
+            }
+        }
+    }
+}
+
