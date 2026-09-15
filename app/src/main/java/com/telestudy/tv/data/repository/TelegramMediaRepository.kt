@@ -6,6 +6,7 @@ import com.telestudy.tv.data.local.dao.VideoDao
 import com.telestudy.tv.data.mapper.EntityMappers
 import com.telestudy.tv.data.remote.TelegramRemoteDataSource
 import com.telestudy.tv.domain.model.ContinueWatchingItem
+import com.telestudy.tv.domain.model.DailyStudyContinuity
 import com.telestudy.tv.domain.model.TelegramChat
 import com.telestudy.tv.domain.model.TelegramVideo
 import com.telestudy.tv.domain.model.WatchProgress
@@ -121,6 +122,52 @@ class TelegramMediaRepository(
                 }
             }
             items
+        }
+    }
+
+    /**
+     * Observes the daily study continuity:
+     * 1. The most recent lesson opened/watched (in-progress or completed) -> "မနေ့က ဘာဖွင့်ခဲ့လဲ"
+     * 2. The subsequent sequential lesson in the same study group -> "ဖွင့်ခဲ့တဲ့ သင်ခန်းစာရဲ့ နောက်တစ်ခု"
+     */
+    fun observeDailyStudyContinuity(): Flow<DailyStudyContinuity> {
+        val dao = playbackProgressDao ?: return flowOf(DailyStudyContinuity())
+        return dao.observeRecentlyWatched(limit = 1).map { progressList ->
+            if (progressList.isEmpty()) return@map DailyStudyContinuity()
+
+            val p = progressList.first()
+            val videoEntity = videoDao.getVideo(p.chatId, p.messageId)
+            val chatEntity = chatDao.getChatById(p.chatId)
+            val chatTitle = chatEntity?.title ?: "Telegram Chat"
+
+            val lastWatchedItem = if (videoEntity != null) {
+                val video = EntityMappers.mapEntityToDomain(videoEntity)
+                val progress = WatchProgress(
+                    chatId = p.chatId,
+                    messageId = p.messageId,
+                    positionMs = p.positionMs,
+                    durationMs = p.durationMs,
+                    isCompleted = p.isCompleted,
+                    lastPlayedTimestamp = p.updatedAt
+                )
+                ContinueWatchingItem(video, chatTitle, progress)
+            } else null
+
+            // Determine subsequent sequential lesson in the same chat
+            val allVideosInChat = videoDao.getVideosChronological(p.chatId)
+                .map { EntityMappers.mapEntityToDomain(it) }
+                .sortedWith(EntityMappers.LessonComparator)
+
+            val currentIndex = allVideosInChat.indexOfFirst { it.messageId == p.messageId }
+            val upNextVideo = if (currentIndex != -1 && currentIndex + 1 < allVideosInChat.size) {
+                allVideosInChat[currentIndex + 1]
+            } else null
+
+            DailyStudyContinuity(
+                lastWatched = lastWatchedItem,
+                upNext = upNextVideo,
+                upNextSubjectTitle = chatTitle
+            )
         }
     }
 

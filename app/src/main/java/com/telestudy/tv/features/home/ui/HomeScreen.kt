@@ -54,6 +54,7 @@ import com.telestudy.tv.features.home.HomeViewModel
 import com.telestudy.tv.features.home.ui.components.ContinueWatchingCard
 import com.telestudy.tv.features.home.ui.components.SubjectCard
 import com.telestudy.tv.features.home.ui.components.TvSearchKeyboard
+import com.telestudy.tv.features.home.ui.components.UpNextCard
 import com.telestudy.tv.features.home.ui.components.VideoCard
 import kotlinx.coroutines.delay
 
@@ -438,8 +439,13 @@ private fun ShelvesContent(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // --- SHELF 1: Continue Watching (Only shown if in-progress videos exist) ---
-        if (uiState.continueWatching.isNotEmpty()) {
+        // --- SHELF 1: Daily Study Continuity (မနေ့က သင်ခန်းစာ & နောက်သင်ခန်းစာ) ---
+        val continuity = uiState.continuity
+        val lastWatched = continuity.lastWatched
+        val upNext = continuity.upNext
+        val hasContinuity = lastWatched != null || upNext != null || uiState.continueWatching.isNotEmpty()
+
+        if (hasContinuity) {
             item {
                 Column {
                     Row(
@@ -453,7 +459,7 @@ private fun ShelvesContent(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Continue Watching",
+                            text = "Daily Study • နေ့စဉ်သင်ယူမှု",
                             color = Color.White,
                             fontSize = if (isTv) 20.sp else 17.sp,
                             fontWeight = FontWeight.Bold
@@ -461,17 +467,44 @@ private fun ShelvesContent(
                     }
 
                     LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        // Card 1: မနေ့က ဖွင့်ခဲ့သော သင်ခန်းစာ (Last Watched / Continue Watching)
+                        if (lastWatched != null) {
+                            item(key = "last_watched_${lastWatched.video.chatId}_${lastWatched.video.messageId}") {
+                                ContinueWatchingCard(
+                                    item = lastWatched,
+                                    onClick = { onPlayVideo(lastWatched.video) },
+                                    modifier = Modifier.width(if (isTv) 320.dp else 250.dp)
+                                )
+                            }
+                        }
+
+                        // Card 2: ဖွင့်ခဲ့သည့် သင်ခန်းစာ၏ နောက်တစ်ခု (Up Next Lesson - Lesson N+1)
+                        if (upNext != null) {
+                            item(key = "up_next_${upNext.chatId}_${upNext.messageId}") {
+                                UpNextCard(
+                                    video = upNext,
+                                    subjectTitle = continuity.upNextSubjectTitle ?: "Up Next",
+                                    onClick = { onPlayVideo(upNext) },
+                                    modifier = Modifier.width(if (isTv) 320.dp else 250.dp)
+                                )
+                            }
+                        }
+
+                        // Additional in-progress lessons (if student studies multiple subjects)
+                        val otherContinueWatching = uiState.continueWatching.filter {
+                            it.video.chatId != lastWatched?.video?.chatId || it.video.messageId != lastWatched?.video?.messageId
+                        }
                         items(
-                            items = uiState.continueWatching,
+                            items = otherContinueWatching,
                             key = { "cw_${it.video.chatId}_${it.video.messageId}" }
                         ) { item ->
                             ContinueWatchingCard(
                                 item = item,
                                 onClick = { onPlayVideo(item.video) },
-                                modifier = Modifier.width(if (isTv) 280.dp else 220.dp)
+                                modifier = Modifier.width(if (isTv) 300.dp else 240.dp)
                             )
                         }
                     }
@@ -484,13 +517,25 @@ private fun ShelvesContent(
         if (displaySubjects.isNotEmpty()) {
             item {
                 Column {
-                    Text(
-                        text = "Study Groups & Subjects",
-                        color = Color(0xFF94A3B8),
-                        fontSize = if (isTv) 16.sp else 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Study Groups & Subjects",
+                            color = Color(0xFF94A3B8),
+                            fontSize = if (isTv) 16.sp else 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Select a subject to open all lessons",
+                            color = Color(0xFF64748B),
+                            fontSize = 11.sp
+                        )
+                    }
 
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -512,121 +557,64 @@ private fun ShelvesContent(
             }
         }
 
-        // --- SHELF 3: Current Selected Subject Lessons ---
+        // --- SHELF 3: Selected Subject Overview (Option C - Direct Grid Action) ---
         val selected = uiState.selectedSubject
         val lessons = uiState.lessons
 
-        item {
-            Column {
+        if (selected != null) {
+            item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF1E293B).copy(alpha = 0.6f))
+                        .border(1.dp, Color(0xFF334155), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = if (selected != null) "${selected.title} (${lessons.size} Lessons)" else "Video Lessons",
-                        color = Color.White,
-                        fontSize = if (isTv) 19.sp else 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    if (selected != null && lessons.isNotEmpty()) {
-                        TextButton(onClick = { onOpenLessonList(selected) }) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "View All (${lessons.size}) →",
-                                color = Color(0xFF00E5FF),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold
+                                text = selected.title,
+                                color = Color.White,
+                                fontSize = if (isTv) 18.sp else 16.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                        }
-                    } else if (lessons.isNotEmpty()) {
-                        Text(
-                            text = "Ordered Sequentially",
-                            color = Color(0xFF00E5FF),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-
-                if (lessons.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(140.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "No video lessons in this subject yet.",
-                                color = Color(0xFF64748B),
-                                fontSize = 14.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = onTriggerAutoSync,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFF00E5FF).copy(alpha = 0.18f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
                             ) {
-                                Text("Check for Lessons", color = Color(0xFF00E5FF))
+                                Text(
+                                    text = "${lessons.size} Lessons",
+                                    color = Color(0xFF00E5FF),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
                         }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Ordered sequentially from Lesson 1 • Press OK to view full 3-column lesson list",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 12.sp
+                        )
                     }
-                } else {
-                    // Render horizontal shelf on TV or adaptive row
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Button(
+                        onClick = { onOpenLessonList(selected) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF))
                     ) {
-                        items(
-                            items = lessons,
-                            key = { "lesson_${it.chatId}_${it.messageId}" }
-                        ) { video ->
-                            val progress = uiState.progressMap[Pair(video.chatId, video.messageId)]
-                            VideoCard(
-                                video = video,
-                                onClick = { onPlayVideo(video) },
-                                watchProgress = progress,
-                                modifier = Modifier.width(if (isTv) 260.dp else 210.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- SHELF 4: Recently Added Lessons (Latest across all channels) ---
-        if (uiState.recentLessons.isNotEmpty()) {
-            item {
-                Column(modifier = Modifier.padding(top = 4.dp, bottom = 24.dp)) {
-                    Text(
-                        text = "Recently Added Lessons",
-                        color = Color.White,
-                        fontSize = if (isTv) 19.sp else 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(
-                            items = uiState.recentLessons,
-                            key = { "recent_${it.chatId}_${it.messageId}" }
-                        ) { video ->
-                            val progress = uiState.progressMap[Pair(video.chatId, video.messageId)]
-                            val chatTitle = uiState.chatTitleMap[video.chatId]
-
-                            VideoCard(
-                                video = video,
-                                onClick = { onPlayVideo(video) },
-                                watchProgress = progress,
-                                subjectTitle = chatTitle,
-                                modifier = Modifier.width(if (isTv) 260.dp else 210.dp)
-                            )
-                        }
+                        Text(
+                            text = "View Lessons (${lessons.size}) →",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }

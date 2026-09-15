@@ -1,4 +1,4 @@
-﻿package com.telestudy.tv.features.home
+package com.telestudy.tv.features.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -6,6 +6,7 @@ import com.telestudy.tv.data.repository.TelegramMediaRepository
 import com.telestudy.tv.data.sync.SyncManager
 import com.telestudy.tv.data.sync.SyncState
 import com.telestudy.tv.domain.model.ContinueWatchingItem
+import com.telestudy.tv.domain.model.DailyStudyContinuity
 import com.telestudy.tv.domain.model.TelegramChat
 import com.telestudy.tv.domain.model.TelegramVideo
 import com.telestudy.tv.domain.model.WatchProgress
@@ -19,7 +20,7 @@ data class HomeUiState(
     val subjects: List<TelegramChat> = emptyList(),
     val selectedSubject: TelegramChat? = null,
     val lessons: List<TelegramVideo> = emptyList(),
-    val recentLessons: List<TelegramVideo> = emptyList(),
+    val continuity: DailyStudyContinuity = DailyStudyContinuity(),
     val continueWatching: List<ContinueWatchingItem> = emptyList(),
     val progressMap: Map<Pair<Long, Long>, WatchProgress> = emptyMap(),
     val searchResults: List<TelegramVideo> = emptyList(),
@@ -48,7 +49,7 @@ class HomeViewModel(
     init {
         observeSyncState()
         observeSubjects()
-        observeRecentLessons()
+        observeDailyStudyContinuity()
         observeContinueWatching()
         observePlaybackProgress()
         triggerAutoSync()
@@ -83,10 +84,10 @@ class HomeViewModel(
         }
     }
 
-    private fun observeRecentLessons() {
+    private fun observeDailyStudyContinuity() {
         viewModelScope.launch {
-            repository.observeRecentVideos(limit = 15).collect { recents ->
-                _uiState.update { it.copy(recentLessons = recents) }
+            repository.observeDailyStudyContinuity().collect { continuity ->
+                _uiState.update { it.copy(continuity = continuity) }
             }
         }
     }
