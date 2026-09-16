@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -64,7 +65,8 @@ fun HomeScreen(
     viewModel: HomeViewModel,
     onPlayVideo: (TelegramVideo) -> Unit,
     onNavigateToDiscovery: () -> Unit = {},
-    onNavigateToSpike: () -> Unit = {}
+    onNavigateToSpike: () -> Unit = {},
+    onCheckForUpdate: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val deviceType = LocalDeviceType.current
@@ -166,7 +168,7 @@ fun HomeScreen(
                     }
                 }
 
-                // Quick Actions (Cleaned: Search & Sync only, no debug buttons)
+                // Quick Actions (Search, Sync, and Update check)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { viewModel.setSearchActive(!uiState.isSearchActive) }) {
                         Icon(
@@ -179,6 +181,13 @@ fun HomeScreen(
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Sync",
+                            tint = Color(0xFF94A3B8)
+                        )
+                    }
+                    IconButton(onClick = onCheckForUpdate) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = "Check for Updates",
                             tint = Color(0xFF94A3B8)
                         )
                     }

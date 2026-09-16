@@ -20,6 +20,15 @@ val localProperties = Properties().apply {
 val tgApiId = (localProperties.getProperty("TELEGRAM_API_ID") ?: "0").toIntOrNull() ?: 0
 val tgApiHash = localProperties.getProperty("TELEGRAM_API_HASH") ?: ""
 
+val releaseKeystorePath: String? = System.getenv("RELEASE_KEYSTORE_PATH")
+    ?: localProperties.getProperty("RELEASE_KEYSTORE_PATH")
+val releaseKeystorePassword: String? = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+    ?: localProperties.getProperty("RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")
+    ?: localProperties.getProperty("RELEASE_KEY_ALIAS")
+val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
+    ?: localProperties.getProperty("RELEASE_KEY_PASSWORD")
+
 android {
     namespace = "com.telestudy.tv"
     compileSdk = 35
@@ -28,8 +37,8 @@ android {
         applicationId = "com.telestudy.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "1.0.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -38,6 +47,17 @@ android {
 
         ndk {
             abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (!releaseKeystorePath.isNullOrBlank() && file(releaseKeystorePath).exists()) {
+                storeFile = file(releaseKeystorePath)
+                storePassword = releaseKeystorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -52,6 +72,7 @@ android {
         }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

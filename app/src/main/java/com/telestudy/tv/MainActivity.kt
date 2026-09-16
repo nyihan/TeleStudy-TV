@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
         val clientManager = app.clientManager
         val authViewModel = AuthViewModel(clientManager)
         val mediaRepository = app.mediaRepository
+        val updateManager = app.updateManager
 
         setContent {
             CompositionLocalProvider(LocalDeviceType provides deviceType) {
@@ -56,6 +57,10 @@ class MainActivity : ComponentActivity() {
                         val authUiState by authViewModel.uiState.collectAsState()
                         val discoveryViewModel = remember { com.telestudy.tv.features.discovery.DiscoveryViewModel(mediaRepository) }
                         val homeViewModel = remember { com.telestudy.tv.features.home.HomeViewModel(mediaRepository, app.syncManager) }
+
+                        LaunchedEffect(Unit) {
+                            updateManager.checkForUpdates(isManual = false)
+                        }
 
                         var selectedVideoForPlayback by remember { mutableStateOf<com.telestudy.tv.features.player.PlayerMediaItem?>(null) }
                         var playerViewModel by remember { mutableStateOf<com.telestudy.tv.features.player.PlayerViewModel?>(null) }
@@ -141,7 +146,8 @@ class MainActivity : ComponentActivity() {
                                         currentScreen = "player"
                                     },
                                     onNavigateToDiscovery = { currentScreen = "discovery" },
-                                    onNavigateToSpike = { currentScreen = "spike" }
+                                    onNavigateToSpike = { currentScreen = "spike" },
+                                    onCheckForUpdate = { updateManager.checkForUpdates(isManual = true) }
                                 )
                             }
                             "player" -> {
@@ -193,6 +199,12 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+
+                        // 10-foot In-App Update Dialog Host (Suppressed during video playback)
+                        com.telestudy.tv.core.update.ui.UpdateHostDialog(
+                            updateManager = updateManager,
+                            isPlayerActive = (currentScreen == "player" || selectedVideoForPlayback != null)
+                        )
                     }
                 }
             }

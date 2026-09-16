@@ -15,3 +15,10 @@ tdlib/
 *.db-wal
 dump.xml
 *.png
+
+# Signing and Keystores
+*.jks
+*.keystore
+*.p12
+*.signing
+signing.properties

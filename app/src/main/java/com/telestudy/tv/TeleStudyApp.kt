@@ -48,6 +48,10 @@ class TeleStudyApp : Application() {
         )
     }
 
+    val updateManager: com.telestudy.tv.core.update.AppUpdateManager by lazy {
+        com.telestudy.tv.core.update.AppUpdateManager(this)
+    }
+
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.DEBUG) {
