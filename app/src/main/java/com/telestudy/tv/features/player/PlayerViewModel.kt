@@ -21,7 +21,8 @@ import timber.log.Timber
 class PlayerViewModel(
     val playerManager: TeleStudyPlayerManager,
     private val playbackProgressDao: PlaybackProgressDao,
-    val mediaItem: PlayerMediaItem
+    val mediaItem: PlayerMediaItem,
+    val onPlaybackEnded: (() -> Unit)? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
@@ -37,6 +38,7 @@ class PlayerViewModel(
     private var lastSavedTimestamp: Long = 0L
     private var resolvedPlayableItem: PlayerMediaItem? = null
     private var savedProgressEntity: PlaybackProgressEntity? = null
+    private var hasTriggeredPlaybackEnded = false
 
     init {
         observePlayerState()
@@ -120,6 +122,7 @@ class PlayerViewModel(
     }
 
     fun startPlayback(mode: PlaybackStartMode) {
+        hasTriggeredPlaybackEnded = false
         _uiState.update { it.copy(resumeDialogState = null, status = PlaybackStatus.BUFFERING) }
         viewModelScope.launch {
             val item = resolvedPlayableItem ?: mediaItem
@@ -158,6 +161,10 @@ class PlayerViewModel(
                     Player.STATE_READY -> PlaybackStatus.READY
                     Player.STATE_ENDED -> {
                         markCompleted()
+                        if (!hasTriggeredPlaybackEnded) {
+                            hasTriggeredPlaybackEnded = true
+                            onPlaybackEnded?.invoke()
+                        }
                         PlaybackStatus.ENDED
                     }
                     else -> PlaybackStatus.IDLE
@@ -220,6 +227,14 @@ class PlayerViewModel(
         playerManager.togglePlayPause()
     }
 
+    fun pause() {
+        playerManager.pause()
+    }
+
+    fun play() {
+        playerManager.resume()
+    }
+
     fun seekTo(positionMs: Long) {
         playerManager.seekTo(positionMs)
         _uiState.update { it.copy(currentPositionMs = positionMs) }
@@ -238,6 +253,7 @@ class PlayerViewModel(
     }
 
     fun retry() {
+        hasTriggeredPlaybackEnded = false
         _uiState.update { it.copy(errorMessage = null, status = PlaybackStatus.BUFFERING) }
         playerManager.retry()
     }

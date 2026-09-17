@@ -28,6 +28,7 @@ import com.telestudy.tv.core.tdlib.NativeLoadResult
 import com.telestudy.tv.core.tdlib.TDLibNativeLoader
 import com.telestudy.tv.features.auth.AuthViewModel
 import com.telestudy.tv.ui.theme.*
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class MainActivity : ComponentActivity() {
@@ -81,6 +82,57 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        val coroutineScope = rememberCoroutineScope()
+                        var playVideoLessonRef by remember { mutableStateOf<((com.telestudy.tv.domain.model.TelegramVideo) -> Unit)?>(null) }
+
+                        val playVideoLesson: (com.telestudy.tv.domain.model.TelegramVideo) -> Unit = remember {
+                            { video ->
+                                Timber.i("Selected lesson to play: ${video.fileName} (id=${video.messageId}, fileId=${video.fileId})")
+                                homeViewModel.recordLastPlayedVideo(video.chatId, video.messageId)
+                                val mediaItem = com.telestudy.tv.features.player.PlayerMediaItem(
+                                    chatId = video.chatId,
+                                    messageId = video.messageId,
+                                    fileId = video.fileId,
+                                    fileName = video.fileName,
+                                    durationSeconds = video.durationSeconds,
+                                    fileSize = video.fileSize,
+                                    thumbnailPath = video.thumbnailPath,
+                                    width = video.width,
+                                    height = video.height
+                                )
+                                selectedVideoForPlayback = mediaItem
+                                playerViewModel?.playerManager?.release()
+
+                                val playerManager = com.telestudy.tv.core.player.TeleStudyPlayerManager(
+                                    this@MainActivity,
+                                    clientManager.fileManager,
+                                    clientProvider = { clientManager.getClient() }
+                                )
+                                playerViewModel = com.telestudy.tv.features.player.PlayerViewModel(
+                                    playerManager = playerManager,
+                                    playbackProgressDao = app.playbackProgressDao,
+                                    mediaItem = mediaItem,
+                                    onPlaybackEnded = {
+                                        coroutineScope.launch {
+                                            try {
+                                                val nextVideo = mediaRepository.getNextLessonInChat(video.chatId, video.messageId)
+                                                if (nextVideo != null) {
+                                                    Timber.i("Auto-playing next sequential lesson: ${nextVideo.fileName}")
+                                                    playVideoLessonRef?.invoke(nextVideo)
+                                                } else {
+                                                    Timber.i("End of course reached for chat ${video.chatId}. No subsequent lesson.")
+                                                }
+                                            } catch (e: Exception) {
+                                                Timber.e(e, "Error resolving next lesson for auto-play in chat ${video.chatId}")
+                                            }
+                                        }
+                                    }
+                                )
+                                currentScreen = "player"
+                            }
+                        }
+                        playVideoLessonRef = playVideoLesson
+
                         val playLesson33 = intent.getBooleanExtra("play_lesson33", false)
                         LaunchedEffect(playLesson33) {
                             if (playLesson33) {
@@ -88,29 +140,7 @@ class MainActivity : ComponentActivity() {
                                 val l33 = videos.firstOrNull { it.fileName.contains("Lesson 33") }
                                 if (l33 != null) {
                                     Timber.i("Auto-playing Lesson 33 from intent: %s (fileId=%s)", l33.fileName, l33.fileId)
-                                    val mediaItem = com.telestudy.tv.features.player.PlayerMediaItem(
-                                        chatId = l33.chatId,
-                                        messageId = l33.messageId,
-                                        fileId = l33.fileId,
-                                        fileName = l33.fileName,
-                                        durationSeconds = l33.durationSeconds,
-                                        fileSize = l33.fileSize,
-                                        thumbnailPath = l33.thumbnailPath,
-                                        width = l33.width,
-                                        height = l33.height
-                                    )
-                                    selectedVideoForPlayback = mediaItem
-                                    val playerManager = com.telestudy.tv.core.player.TeleStudyPlayerManager(
-                                        this@MainActivity,
-                                        clientManager.fileManager,
-                                        clientProvider = { clientManager.getClient() }
-                                    )
-                                    playerViewModel = com.telestudy.tv.features.player.PlayerViewModel(
-                                        playerManager = playerManager,
-                                        playbackProgressDao = app.playbackProgressDao,
-                                        mediaItem = mediaItem
-                                    )
-                                    currentScreen = "player"
+                                    playVideoLesson(com.telestudy.tv.data.mapper.EntityMappers.mapEntityToDomain(l33))
                                 }
                             }
                         }
@@ -119,32 +149,7 @@ class MainActivity : ComponentActivity() {
                             "home" -> {
                                 com.telestudy.tv.features.home.ui.HomeScreen(
                                     viewModel = homeViewModel,
-                                    onPlayVideo = { video ->
-                                        Timber.i("Selected lesson to play: ${video.fileName} (id=${video.messageId}, fileId=${video.fileId})")
-                                        val mediaItem = com.telestudy.tv.features.player.PlayerMediaItem(
-                                            chatId = video.chatId,
-                                            messageId = video.messageId,
-                                            fileId = video.fileId,
-                                            fileName = video.fileName,
-                                            durationSeconds = video.durationSeconds,
-                                            fileSize = video.fileSize,
-                                            thumbnailPath = video.thumbnailPath,
-                                            width = video.width,
-                                            height = video.height
-                                        )
-                                        selectedVideoForPlayback = mediaItem
-                                        val playerManager = com.telestudy.tv.core.player.TeleStudyPlayerManager(
-                                            this@MainActivity,
-                                            clientManager.fileManager,
-                                            clientProvider = { clientManager.getClient() }
-                                        )
-                                        playerViewModel = com.telestudy.tv.features.player.PlayerViewModel(
-                                            playerManager = playerManager,
-                                            playbackProgressDao = app.playbackProgressDao,
-                                            mediaItem = mediaItem
-                                        )
-                                        currentScreen = "player"
-                                    },
+                                    onPlayVideo = playVideoLesson,
                                     onNavigateToDiscovery = { currentScreen = "discovery" },
                                     onNavigateToSpike = { currentScreen = "spike" },
                                     onCheckForUpdate = { updateManager.checkForUpdates(isManual = true) }

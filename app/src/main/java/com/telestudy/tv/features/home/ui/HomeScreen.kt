@@ -76,15 +76,15 @@ fun HomeScreen(
         uiState.subjects.filter { it.videoCount > 0 }
     }
 
-    var activeLessonListSubject by remember { mutableStateOf<TelegramChat?>(null) }
+    val activeSubject = uiState.activeLessonListSubject
 
     // Priority 1: Back key exits Group Lesson List view and returns to Home
-    BackHandler(enabled = activeLessonListSubject != null) {
-        activeLessonListSubject = null
+    BackHandler(enabled = activeSubject != null) {
+        viewModel.closeLessonList()
     }
 
     // Priority 2: Back key closes search when active
-    BackHandler(enabled = (uiState.isSearchActive || uiState.searchQuery.isNotBlank()) && activeLessonListSubject == null) {
+    BackHandler(enabled = (uiState.isSearchActive || uiState.searchQuery.isNotBlank()) && activeSubject == null) {
         viewModel.setSearchActive(false)
         viewModel.updateSearchQuery("")
     }
@@ -95,15 +95,19 @@ fun HomeScreen(
             .background(Color(0xFF0A0E17))
             .padding(horizontal = if (isTv) 32.dp else 16.dp, vertical = if (isTv) 8.dp else 16.dp)
     ) {
-        if (activeLessonListSubject != null) {
+        if (activeSubject != null) {
             // --- GROUP LESSON LIST MODE (Full Viewport Multi-row Grid) ---
             GroupLessonListContent(
-                subject = activeLessonListSubject!!,
+                subject = activeSubject,
                 lessons = uiState.lessons,
                 progressMap = uiState.progressMap,
                 isTv = isTv,
-                onBack = { activeLessonListSubject = null },
-                onPlayVideo = onPlayVideo,
+                lastPlayedMessageId = uiState.lastPlayedVideoByChat[activeSubject.id],
+                onBack = { viewModel.closeLessonList() },
+                onPlayVideo = { video ->
+                    viewModel.recordLastPlayedVideo(video.chatId, video.messageId)
+                    onPlayVideo(video)
+                },
                 onTriggerAutoSync = { viewModel.triggerAutoSync() }
             )
         } else {
@@ -287,14 +291,15 @@ fun HomeScreen(
                     isTv = isTv,
                     subjectsWithVideos = subjectsWithVideos,
                     onSelectSubject = { subject ->
-                        viewModel.selectSubject(subject)
-                        activeLessonListSubject = subject
+                        viewModel.openLessonList(subject)
                     },
                     onOpenLessonList = { subject ->
-                        viewModel.selectSubject(subject)
-                        activeLessonListSubject = subject
+                        viewModel.openLessonList(subject)
                     },
-                    onPlayVideo = onPlayVideo,
+                    onPlayVideo = { video ->
+                        viewModel.recordLastPlayedVideo(video.chatId, video.messageId)
+                        onPlayVideo(video)
+                    },
                     onTriggerAutoSync = { viewModel.triggerAutoSync() }
                 )
             }
@@ -638,21 +643,34 @@ private fun GroupLessonListContent(
     lessons: List<TelegramVideo>,
     progressMap: Map<Pair<Long, Long>, WatchProgress>,
     isTv: Boolean,
+    lastPlayedMessageId: Long?,
     onBack: () -> Unit,
     onPlayVideo: (TelegramVideo) -> Unit,
     onTriggerAutoSync: () -> Unit
 ) {
+    val targetIndex = remember(lessons, lastPlayedMessageId) {
+        if (lastPlayedMessageId != null) {
+            val idx = lessons.indexOfFirst { it.messageId == lastPlayedMessageId }
+            if (idx >= 0) idx else 0
+        } else 0
+    }
+
     val gridState = rememberLazyGridState()
-    val firstLessonRequester = remember { FocusRequester() }
+    val targetLessonRequester = remember { FocusRequester() }
     val backInteractionSource = remember { MutableInteractionSource() }
     val isBackFocused by backInteractionSource.collectIsFocusedAsState()
 
-    // Request initial focus on Lesson 1 when lessons are available
-    LaunchedEffect(subject.id, lessons.size) {
+    // Request initial focus on target lesson and restore scroll position around target lesson
+    LaunchedEffect(subject.id, lessons.isNotEmpty(), targetIndex) {
         if (lessons.isNotEmpty()) {
+            if (targetIndex > 0) {
+                try {
+                    gridState.scrollToItem(targetIndex)
+                } catch (_: Exception) {}
+            }
             delay(120L)
             try {
-                firstLessonRequester.requestFocus()
+                targetLessonRequester.requestFocus()
             } catch (_: Exception) {}
         }
     }
@@ -774,7 +792,7 @@ private fun GroupLessonListContent(
                         video = video,
                         onClick = { onPlayVideo(video) },
                         watchProgress = progress,
-                        modifier = if (index == 0) Modifier.focusRequester(firstLessonRequester) else Modifier
+                        modifier = if (index == targetIndex) Modifier.focusRequester(targetLessonRequester) else Modifier
                     )
                 }
             }

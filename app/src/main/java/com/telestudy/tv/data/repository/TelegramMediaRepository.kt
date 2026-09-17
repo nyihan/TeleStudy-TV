@@ -172,6 +172,22 @@ class TelegramMediaRepository(
     }
 
     /**
+     * Resolves the subsequent sequential lesson in the same chat.
+     * Uses natural chronological lesson ordering via EntityMappers.LessonComparator.
+     * Returns null if current lesson is the last lesson in the course or not found.
+     */
+    suspend fun getNextLessonInChat(chatId: Long, currentMessageId: Long): TelegramVideo? {
+        val allVideosInChat = videoDao.getVideosChronological(chatId)
+            .map { EntityMappers.mapEntityToDomain(it) }
+            .sortedWith(EntityMappers.LessonComparator)
+
+        val currentIndex = allVideosInChat.indexOfFirst { it.messageId == currentMessageId }
+        return if (currentIndex != -1 && currentIndex + 1 < allVideosInChat.size) {
+            allVideosInChat[currentIndex + 1]
+        } else null
+    }
+
+    /**
      * Observes all playback progress mapped by composite key (chatId, messageId).
      */
     fun observeAllPlaybackProgress(): Flow<Map<Pair<Long, Long>, WatchProgress>> {

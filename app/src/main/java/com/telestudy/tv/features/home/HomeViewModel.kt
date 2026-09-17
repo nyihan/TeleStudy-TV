@@ -19,6 +19,8 @@ import timber.log.Timber
 data class HomeUiState(
     val subjects: List<TelegramChat> = emptyList(),
     val selectedSubject: TelegramChat? = null,
+    val activeLessonListSubject: TelegramChat? = null,
+    val lastPlayedVideoByChat: Map<Long, Long> = emptyMap(), // chatId -> messageId
     val lessons: List<TelegramVideo> = emptyList(),
     val continuity: DailyStudyContinuity = DailyStudyContinuity(),
     val continueWatching: List<ContinueWatchingItem> = emptyList(),
@@ -105,6 +107,21 @@ class HomeViewModel(
             repository.observeAllPlaybackProgress().collect { map ->
                 _uiState.update { it.copy(progressMap = map) }
             }
+        }
+    }
+
+    fun openLessonList(subject: TelegramChat) {
+        _uiState.update { it.copy(activeLessonListSubject = subject) }
+        selectSubject(subject)
+    }
+
+    fun closeLessonList() {
+        _uiState.update { it.copy(activeLessonListSubject = null) }
+    }
+
+    fun recordLastPlayedVideo(chatId: Long, messageId: Long) {
+        _uiState.update { current ->
+            current.copy(lastPlayedVideoByChat = current.lastPlayedVideoByChat + (chatId to messageId))
         }
     }
 

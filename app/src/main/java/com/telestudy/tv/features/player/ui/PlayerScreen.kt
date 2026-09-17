@@ -98,6 +98,18 @@ fun PlayerScreen(
                                 false
                             }
                         }
+                        Key.MediaPlayPause, Key.Spacebar -> {
+                            viewModel.togglePlayPause()
+                            true
+                        }
+                        Key.MediaPause -> {
+                            viewModel.pause()
+                            true
+                        }
+                        Key.MediaPlay -> {
+                            viewModel.play()
+                            true
+                        }
                         Key.Back, Key.Escape -> {
                             if (uiState.isControlsVisible) {
                                 viewModel.setControlsVisible(false)

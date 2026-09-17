@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.telestudy.tv.features.player.PlayerUiState
+import kotlinx.coroutines.delay
 
 @Composable
 fun TvPlayerControls(
@@ -41,6 +44,16 @@ fun TvPlayerControls(
     onSeekBy: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val playPauseRequester = remember { FocusRequester() }
+
+    LaunchedEffect(uiState.isControlsVisible) {
+        if (uiState.isControlsVisible) {
+            delay(80L)
+            try {
+                playPauseRequester.requestFocus()
+            } catch (_: Exception) {}
+        }
+    }
     AnimatedVisibility(
         visible = uiState.isControlsVisible,
         enter = fadeIn(),
@@ -102,7 +115,8 @@ fun TvPlayerControls(
                         icon = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         description = if (uiState.isPlaying) "Pause" else "Play",
                         isPrimary = true,
-                        onClick = onTogglePlayPause
+                        onClick = onTogglePlayPause,
+                        modifier = Modifier.focusRequester(playPauseRequester)
                     )
 
                     TvPlayerButton(
@@ -179,7 +193,6 @@ private fun TvPlayerButton(
                 color = if (isFocused) Color.White else Color.Transparent,
                 shape = CircleShape
             )
-            .focusable(interactionSource = interactionSource)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,

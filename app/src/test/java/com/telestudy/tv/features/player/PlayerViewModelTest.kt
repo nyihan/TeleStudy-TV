@@ -321,12 +321,51 @@ class PlayerViewModelTest {
         assertTrue(fakeProgressDao.savedProgress!!.isCompleted)
     }
 
+    @Test
+    fun testPlayerControls_pauseAndPlay_delegatesCorrectly() {
+        val viewModel = PlayerViewModel(fakePlayerManager, fakeProgressDao, testMediaItem)
+        testDispatcher.scheduler.runCurrent()
+
+        viewModel.pause()
+        assertEquals(1, fakePlayerManager.pauseCallCount)
+
+        viewModel.play()
+        assertEquals(1, fakePlayerManager.resumeCallCount)
+
+        viewModel.togglePlayPause()
+        assertEquals(1, fakePlayerManager.togglePlayPauseCallCount)
+    }
+
+    @Test
+    fun testPlaybackEnded_triggersOnPlaybackEndedCallback_exactlyOnce() {
+        var callbackCount = 0
+        val viewModel = PlayerViewModel(
+            playerManager = fakePlayerManager,
+            playbackProgressDao = fakeProgressDao,
+            mediaItem = testMediaItem,
+            onPlaybackEnded = { callbackCount++ }
+        )
+        testDispatcher.scheduler.runCurrent()
+
+        // First END emission
+        fakePlayerManager.emitState(Player.STATE_ENDED)
+        testDispatcher.scheduler.runCurrent()
+        assertEquals(1, callbackCount)
+
+        // Duplicate END emission (e.g. state rebroadcast or duplicate callback)
+        fakePlayerManager.emitState(Player.STATE_ENDED)
+        testDispatcher.scheduler.runCurrent()
+        assertEquals("Duplicate END must be guarded and not re-trigger callback", 1, callbackCount)
+    }
+
     // --- Fakes ---
 
     private class FakeTeleStudyPlayerManager(context: Context) :
         TeleStudyPlayerManager(context, FakeTdlibFileManager()) {
 
         var togglePlayPauseCallCount = 0
+        var pauseCallCount = 0
+        var resumeCallCount = 0
         var lastSeekPositionMs = -1L
         var preparedStartPositionMs = -1L
 
@@ -349,6 +388,14 @@ class PlayerViewModelTest {
 
         override fun togglePlayPause() {
             togglePlayPauseCallCount++
+        }
+
+        override fun pause() {
+            pauseCallCount++
+        }
+
+        override fun resume() {
+            resumeCallCount++
         }
 
         override fun seekTo(positionMs: Long) {
