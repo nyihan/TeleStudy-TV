@@ -1,5 +1,6 @@
 package com.telestudy.tv.features.home.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.telestudy.tv.data.mapper.EntityMappers
 import com.telestudy.tv.domain.model.TelegramVideo
 import com.telestudy.tv.domain.model.WatchProgress
@@ -51,7 +53,7 @@ fun VideoCard(
     val isFocused by interactionSource.collectIsFocusedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isFocused) 1.10f else 1.0f,
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
         label = "cardScale"
     )
 
@@ -86,6 +88,7 @@ fun VideoCard(
 
     Column(
         modifier = modifier
+            .zIndex(if (isFocused) 1f else 0f)
             .bringIntoViewRequester(bringIntoViewRequester)
             .scale(scale)
             .shadow(

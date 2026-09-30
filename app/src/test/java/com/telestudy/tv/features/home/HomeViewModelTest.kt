@@ -214,11 +214,58 @@ class HomeViewModelTest {
         allVideos: List<TelegramVideo>,
         currentMessageId: Long
     ): TelegramVideo? {
-        val sorted = allVideos.sortedWith(EntityMappers.LessonComparator)
-        val currentIndex = sorted.indexOfFirst { it.messageId == currentMessageId }
-        return if (currentIndex != -1 && currentIndex + 1 < sorted.size) {
-            sorted[currentIndex + 1]
+        val canonical = EntityMappers.toCanonicalLessonSequence(allVideos)
+        val currentIndex = canonical.indexOfFirst { it.messageId == currentMessageId }
+        return if (currentIndex != -1 && currentIndex + 1 < canonical.size) {
+            canonical[currentIndex + 1]
         } else null
+    }
+
+    private fun resolvePreviousLesson(
+        allVideos: List<TelegramVideo>,
+        currentMessageId: Long
+    ): TelegramVideo? {
+        val canonical = EntityMappers.toCanonicalLessonSequence(allVideos)
+        val currentIndex = canonical.indexOfFirst { it.messageId == currentMessageId }
+        return if (currentIndex > 0) {
+            canonical[currentIndex - 1]
+        } else null
+    }
+
+    @Test
+    fun testAutoPlay_uploadRetryDisplacement_playsInInstructionalOrder() {
+        val l6 = createTestLesson(6, 1001L)
+        val l4 = createTestLesson(4, 1002L)
+        val l3 = createTestLesson(3, 1003L)
+        val l5 = createTestLesson(5, 1004L) // Uploaded out of order between 3 and 2
+        val l2 = createTestLesson(2, 1005L)
+        val l1 = createTestLesson(1, 1006L)
+
+        // Raw Telegram order: 6 -> 4 -> 3 -> 5 -> 2 -> 1
+        val rawUploadList = listOf(l6, l4, l3, l5, l2, l1)
+
+        // Playing Lesson 4 must ALWAYS navigate to Lesson 5
+        val nextAfter4 = resolveNextLesson(rawUploadList, l4.messageId)
+        assertNotNull(nextAfter4)
+        assertEquals(5, EntityMappers.extractLessonNumber(nextAfter4!!.fileName))
+
+        // Playing Lesson 5 must ALWAYS navigate to Lesson 6
+        val nextAfter5 = resolveNextLesson(rawUploadList, l5.messageId)
+        assertNotNull(nextAfter5)
+        assertEquals(6, EntityMappers.extractLessonNumber(nextAfter5!!.fileName))
+
+        // Previous from Lesson 5 must ALWAYS navigate to Lesson 4
+        val prevFrom5 = resolvePreviousLesson(rawUploadList, l5.messageId)
+        assertNotNull(prevFrom5)
+        assertEquals(4, EntityMappers.extractLessonNumber(prevFrom5!!.fileName))
+
+        // Previous from Lesson 1 must be null
+        val prevFrom1 = resolvePreviousLesson(rawUploadList, l1.messageId)
+        assertNull(prevFrom1)
+
+        // Next from Lesson 6 must be null
+        val nextAfter6 = resolveNextLesson(rawUploadList, l6.messageId)
+        assertNull(nextAfter6)
     }
 
     @Test
@@ -357,5 +404,104 @@ class HomeViewModelTest {
         } else 0
 
         assertEquals("Missing saved lesson must safely fallback to index 0", 0, targetIndex)
+    }
+
+    // =========================================================================
+    // GATE C-4.3 REGRESSION: Group Exit Focus & Row-Wrapping Tests
+    // =========================================================================
+
+    @Test
+    fun testGateC43_closeLessonList_recordsExitedSubjectIdAndClears() {
+        val subject = TelegramChat(id = 42L, title = "Physics Grade 11", typeDescription = "Supergroup", order = 1L, videoCount = 12)
+        var state = HomeUiState(activeLessonListSubject = subject)
+
+        // Simulate closeLessonList
+        val exitedId = state.activeLessonListSubject?.id
+        state = state.copy(
+            activeLessonListSubject = null,
+            lastExitedSubjectId = exitedId
+        )
+
+        assertNull("activeLessonListSubject must be cleared", state.activeLessonListSubject)
+        assertEquals("lastExitedSubjectId must record the exited subject ID", 42L, state.lastExitedSubjectId)
+
+        // Simulate clearLastExitedSubject
+        state = state.copy(lastExitedSubjectId = null)
+        assertNull("lastExitedSubjectId must be reset after focus restoration", state.lastExitedSubjectId)
+    }
+
+    @Test
+    fun testGateC43_3columnTvRowWrapping_logicAndBoundaries() {
+        val columnsCount = 3
+        val totalLessons = 8 // Incomplete 3rd row (indices 0..7)
+
+        fun canWrapRight(index: Int): Pair<Boolean, Int?> {
+            val isEndOfRow = (index + 1) % columnsCount == 0
+            val nextIndex = index + 1
+            return if (isEndOfRow && nextIndex < totalLessons) {
+                true to nextIndex
+            } else false to null
+        }
+
+        fun canWrapLeft(index: Int): Pair<Boolean, Int?> {
+            val isStartOfRow = index % columnsCount == 0
+            val prevIndex = index - 1
+            return if (isStartOfRow && prevIndex >= 0) {
+                true to prevIndex
+            } else false to null
+        }
+
+        // Row 1: indices 0, 1, 2
+        assertEquals(false to null, canWrapRight(0))
+        assertEquals(false to null, canWrapRight(1))
+        assertEquals(true to 3, canWrapRight(2)) // End of row 1 wraps to start of row 2
+
+        // Row 2: indices 3, 4, 5
+        assertEquals(true to 2, canWrapLeft(3))  // Start of row 2 wraps to end of row 1
+        assertEquals(false to null, canWrapLeft(4))
+        assertEquals(false to null, canWrapLeft(5))
+        assertEquals(true to 6, canWrapRight(5)) // End of row 2 wraps to start of row 3
+
+        // Row 3 (incomplete, 2 items): indices 6, 7
+        assertEquals(true to 5, canWrapLeft(6))  // Start of row 3 wraps to end of row 2
+        assertEquals(false to null, canWrapRight(6))
+        assertEquals(false to null, canWrapRight(7)) // Last item of incomplete row must NOT wrap
+
+        // Boundary edge check: start of grid
+        assertEquals(false to null, canWrapLeft(0))  // Index 0 must NOT wrap to negative index
+    }
+
+    @Test
+    fun testGateC43_2columnPhoneRowWrapping_logicAndBoundaries() {
+        val columnsCount = 2
+        val totalLessons = 5 // Incomplete 3rd row (indices 0..4)
+
+        fun canWrapRight(index: Int): Pair<Boolean, Int?> {
+            val isEndOfRow = (index + 1) % columnsCount == 0
+            val nextIndex = index + 1
+            return if (isEndOfRow && nextIndex < totalLessons) {
+                true to nextIndex
+            } else false to null
+        }
+
+        fun canWrapLeft(index: Int): Pair<Boolean, Int?> {
+            val isStartOfRow = index % columnsCount == 0
+            val prevIndex = index - 1
+            return if (isStartOfRow && prevIndex >= 0) {
+                true to prevIndex
+            } else false to null
+        }
+
+        // Row 1: indices 0, 1
+        assertEquals(false to null, canWrapRight(0))
+        assertEquals(true to 2, canWrapRight(1)) // End of row 1 wraps to start of row 2
+
+        // Row 2: indices 2, 3
+        assertEquals(true to 1, canWrapLeft(2))  // Start of row 2 wraps to end of row 1
+        assertEquals(true to 4, canWrapRight(3)) // End of row 2 wraps to start of row 3
+
+        // Row 3: index 4
+        assertEquals(true to 3, canWrapLeft(4))  // Start of row 3 wraps to end of row 2
+        assertEquals(false to null, canWrapRight(4)) // Last item must NOT wrap
     }
 }

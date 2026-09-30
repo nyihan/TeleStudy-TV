@@ -65,13 +65,13 @@ class TelegramMediaRepository(
     }
 
     /**
-     * Observes video lessons for a specific chat from the local database in natural lesson order.
-     * Orders lessons sequentially (e.g. Lesson 1 -> Lesson 36).
+     * Observes video lessons for a specific chat from the local database in canonical instructional sequence.
+     * Reconstructs sequential order (Lesson 1 -> Lesson N), repairs upload retries, and preserves unnumbered anchors.
      */
     fun observeVideos(chatId: Long): Flow<List<TelegramVideo>> {
         return videoDao.observeVideosChronological(chatId).map { entities ->
-            entities.map { EntityMappers.mapEntityToDomain(it) }
-                .sortedWith(EntityMappers.LessonComparator)
+            val domainVideos = entities.map { EntityMappers.mapEntityToDomain(it) }
+            EntityMappers.toCanonicalLessonSequence(domainVideos)
         }
     }
 
@@ -154,9 +154,9 @@ class TelegramMediaRepository(
             } else null
 
             // Determine subsequent sequential lesson in the same chat
-            val allVideosInChat = videoDao.getVideosChronological(p.chatId)
-                .map { EntityMappers.mapEntityToDomain(it) }
-                .sortedWith(EntityMappers.LessonComparator)
+            val allVideosInChat = EntityMappers.toCanonicalLessonSequence(
+                videoDao.getVideosChronological(p.chatId).map { EntityMappers.mapEntityToDomain(it) }
+            )
 
             val currentIndex = allVideosInChat.indexOfFirst { it.messageId == p.messageId }
             val upNextVideo = if (currentIndex != -1 && currentIndex + 1 < allVideosInChat.size) {
@@ -173,17 +173,33 @@ class TelegramMediaRepository(
 
     /**
      * Resolves the subsequent sequential lesson in the same chat.
-     * Uses natural chronological lesson ordering via EntityMappers.LessonComparator.
+     * Uses canonical instructional sequence via EntityMappers.toCanonicalLessonSequence.
      * Returns null if current lesson is the last lesson in the course or not found.
      */
     suspend fun getNextLessonInChat(chatId: Long, currentMessageId: Long): TelegramVideo? {
-        val allVideosInChat = videoDao.getVideosChronological(chatId)
-            .map { EntityMappers.mapEntityToDomain(it) }
-            .sortedWith(EntityMappers.LessonComparator)
+        val allVideosInChat = EntityMappers.toCanonicalLessonSequence(
+            videoDao.getVideosChronological(chatId).map { EntityMappers.mapEntityToDomain(it) }
+        )
 
         val currentIndex = allVideosInChat.indexOfFirst { it.messageId == currentMessageId }
         return if (currentIndex != -1 && currentIndex + 1 < allVideosInChat.size) {
             allVideosInChat[currentIndex + 1]
+        } else null
+    }
+
+    /**
+     * Resolves the previous sequential lesson in the same chat.
+     * Uses canonical instructional sequence via EntityMappers.toCanonicalLessonSequence.
+     * Returns null if current lesson is the first lesson in the course or not found.
+     */
+    suspend fun getPreviousLessonInChat(chatId: Long, currentMessageId: Long): TelegramVideo? {
+        val allVideosInChat = EntityMappers.toCanonicalLessonSequence(
+            videoDao.getVideosChronological(chatId).map { EntityMappers.mapEntityToDomain(it) }
+        )
+
+        val currentIndex = allVideosInChat.indexOfFirst { it.messageId == currentMessageId }
+        return if (currentIndex > 0) {
+            allVideosInChat[currentIndex - 1]
         } else null
     }
 

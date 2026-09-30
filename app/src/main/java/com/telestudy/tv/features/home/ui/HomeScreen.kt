@@ -1,9 +1,14 @@
 package com.telestudy.tv.features.home.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,6 +20,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -58,6 +64,7 @@ import com.telestudy.tv.features.home.ui.components.TvSearchKeyboard
 import com.telestudy.tv.features.home.ui.components.UpNextCard
 import com.telestudy.tv.features.home.ui.components.VideoCard
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,213 +102,212 @@ fun HomeScreen(
             .background(Color(0xFF0A0E17))
             .padding(horizontal = if (isTv) 32.dp else 16.dp, vertical = if (isTv) 8.dp else 16.dp)
     ) {
-        if (activeSubject != null) {
-            // --- GROUP LESSON LIST MODE (Full Viewport Multi-row Grid) ---
-            GroupLessonListContent(
-                subject = activeSubject,
-                lessons = uiState.lessons,
-                progressMap = uiState.progressMap,
-                isTv = isTv,
-                lastPlayedMessageId = uiState.lastPlayedVideoByChat[activeSubject.id],
-                onBack = { viewModel.closeLessonList() },
-                onPlayVideo = { video ->
-                    viewModel.recordLastPlayedVideo(video.chatId, video.messageId)
-                    onPlayVideo(video)
-                },
-                onTriggerAutoSync = { viewModel.triggerAutoSync() }
-            )
-        } else {
-            // --- 1. Top Bar: Branding, Sync Status, Actions (Debug buttons removed) ---
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "TeleStudy TV",
-                        color = Color.White,
-                        fontSize = if (isTv) 26.sp else 22.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    // Sync status indicator
-                    when (val sync = uiState.syncState) {
-                        is SyncState.Syncing -> {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(top = 2.dp)
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(12.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFF00E5FF)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = sync.message,
-                                    color = Color(0xFF00E5FF),
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-                        is SyncState.Success -> {
-                            Text(
-                                text = "● Auto-synced with Telegram",
-                                color = Color(0xFF10B981),
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-                        is SyncState.Error -> {
-                            Text(
-                                text = "Sync: ${sync.message}",
-                                color = Color(0xFFEF4444),
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-                        is SyncState.Idle -> {
-                            Text(
-                                text = "Ready",
-                                color = Color(0xFF64748B),
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(top = 2.dp)
-                            )
-                        }
-                    }
+        AnimatedContent(
+            targetState = activeSubject,
+            transitionSpec = {
+                if (targetState != null) {
+                    (slideInHorizontally(animationSpec = tween(200)) { width -> width / 4 } + fadeIn(animationSpec = tween(200)))
+                        .togetherWith(slideOutHorizontally(animationSpec = tween(160)) { width -> -width / 4 } + fadeOut(animationSpec = tween(160)))
+                } else {
+                    (slideInHorizontally(animationSpec = tween(200)) { width -> -width / 4 } + fadeIn(animationSpec = tween(200)))
+                        .togetherWith(slideOutHorizontally(animationSpec = tween(160)) { width -> width / 4 } + fadeOut(animationSpec = tween(160)))
                 }
-
-                // Quick Actions (Search, Sync, and Update check)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { viewModel.setSearchActive(!uiState.isSearchActive) }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = if (uiState.isSearchActive) Color(0xFF00E5FF) else Color(0xFF94A3B8)
-                        )
-                    }
-                    IconButton(onClick = { viewModel.triggerAutoSync() }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Sync",
-                            tint = Color(0xFF94A3B8)
-                        )
-                    }
-                    IconButton(onClick = onCheckForUpdate) {
-                        Icon(
-                            imageVector = Icons.Default.SystemUpdate,
-                            contentDescription = "Check for Updates",
-                            tint = Color(0xFF94A3B8)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            val focusManager = LocalFocusManager.current
-            val searchInteractionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-            val isSearchPressed by searchInteractionSource.collectIsPressedAsState()
-            val isSearchFocused by searchInteractionSource.collectIsFocusedAsState()
-
-            LaunchedEffect(isSearchPressed, isSearchFocused) {
-                if (isSearchPressed || (isSearchFocused && isTv)) {
-                    viewModel.setSearchActive(true)
-                }
-            }
-
-            // --- 2. Search Input Field ---
-            OutlinedTextField(
-                value = uiState.searchQuery,
-                readOnly = false,
-                interactionSource = searchInteractionSource,
-                onValueChange = {
-                    viewModel.updateSearchQuery(it)
-                    if (!uiState.isSearchActive) viewModel.setSearchActive(true)
-                },
-                placeholder = { Text("Search lessons, subjects, numbers (e.g. Lesson 33, Time)...", fontSize = 13.sp) },
-                leadingIcon = {
-                    IconButton(onClick = { viewModel.setSearchActive(!uiState.isSearchActive) }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF00E5FF))
-                    }
-                },
-                trailingIcon = {
-                    if (uiState.searchQuery.isNotEmpty()) {
-                        IconButton(onClick = {
-                            viewModel.updateSearchQuery("")
-                            viewModel.setSearchActive(false)
-                        }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF94A3B8))
-                        }
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(if (isTv) 46.dp else 52.dp)
-                    .clickable {
-                        viewModel.setSearchActive(true)
-                    }
-                    .onFocusChanged {
-                        if (it.isFocused && isTv) {
-                            viewModel.setSearchActive(true)
-                        }
-                    }
-                    .onPreviewKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyDown) {
-                            if (keyEvent.key == Key.DirectionDown) {
-                                focusManager.moveFocus(FocusDirection.Down)
-                                true
-                            } else if (keyEvent.key == Key.Enter || keyEvent.key == Key.DirectionCenter) {
-                                viewModel.setSearchActive(true)
-                                true
-                            } else false
-                        } else false
-                    },
-                shape = RoundedCornerShape(8.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Color(0xFF00E5FF),
-                    unfocusedBorderColor = Color(0xFF334155),
-                    focusedContainerColor = Color(0xFF0F172A),
-                    unfocusedContainerColor = Color(0xFF0F172A),
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White
-                ),
-                singleLine = true
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // --- 3. Main Content: Search Mode vs Netflix Shelves ---
-            if (uiState.isSearchActive || uiState.searchQuery.isNotBlank()) {
-                // --- SEARCH MODE ---
-                SearchContent(
-                    uiState = uiState,
+            },
+            label = "HomeGroupTransition"
+        ) { currentSubject ->
+            if (currentSubject != null) {
+                // --- GROUP LESSON LIST MODE (Full Viewport Multi-row Grid) ---
+                GroupLessonListContent(
+                    subject = currentSubject,
+                    lessons = uiState.lessons,
+                    progressMap = uiState.progressMap,
                     isTv = isTv,
-                    onChar = { viewModel.onKeyboardChar(it) },
-                    onSpace = { viewModel.onKeyboardSpace() },
-                    onBackspace = { viewModel.onKeyboardBackspace() },
-                    onClear = { viewModel.onKeyboardClear() },
-                    onPlayVideo = onPlayVideo
-                )
-            } else {
-                // --- NETFLIX-STYLE SHELVES ---
-                ShelvesContent(
-                    uiState = uiState,
-                    isTv = isTv,
-                    subjectsWithVideos = subjectsWithVideos,
-                    onSelectSubject = { subject ->
-                        viewModel.openLessonList(subject)
-                    },
-                    onOpenLessonList = { subject ->
-                        viewModel.openLessonList(subject)
-                    },
+                    lastPlayedMessageId = uiState.lastPlayedVideoByChat[currentSubject.id],
+                    onBack = { viewModel.closeLessonList() },
                     onPlayVideo = { video ->
                         viewModel.recordLastPlayedVideo(video.chatId, video.messageId)
                         onPlayVideo(video)
                     },
                     onTriggerAutoSync = { viewModel.triggerAutoSync() }
                 )
+            } else {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // --- 1. Top Bar: Branding, Sync Status, Actions (Debug buttons removed) ---
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "TeleStudy TV",
+                                color = Color.White,
+                                fontSize = if (isTv) 26.sp else 22.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            // Sync status indicator
+                            when (val sync = uiState.syncState) {
+                                is SyncState.Syncing -> {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(12.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF00E5FF)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Syncing lessons...",
+                                            color = Color(0xFF00E5FF),
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                is SyncState.Error -> {
+                                    Text(
+                                        text = "Sync: ${sync.message}",
+                                        color = Color(0xFFEF4444),
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                                else -> {
+                                    Text(
+                                        text = "Grade 11 • All Subjects",
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Right-side actions: Sync & Update buttons
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(onClick = { viewModel.triggerAutoSync() }) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Sync",
+                                    tint = Color(0xFF94A3B8)
+                                )
+                            }
+                            IconButton(onClick = onCheckForUpdate) {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = "Check for Updates",
+                                    tint = Color(0xFF94A3B8)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    val focusManager = LocalFocusManager.current
+                    val searchInteractionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    val isSearchPressed by searchInteractionSource.collectIsPressedAsState()
+
+                    LaunchedEffect(isSearchPressed) {
+                        if (isSearchPressed) {
+                            viewModel.setSearchActive(true)
+                        }
+                    }
+
+                    // --- 2. Search Input Field ---
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        readOnly = false,
+                        interactionSource = searchInteractionSource,
+                        onValueChange = {
+                            viewModel.updateSearchQuery(it)
+                            if (!uiState.isSearchActive) viewModel.setSearchActive(true)
+                        },
+                        placeholder = { Text("Search lessons, subjects, numbers (e.g. Lesson 33, Time)...", fontSize = 13.sp) },
+                        leadingIcon = {
+                            IconButton(onClick = { viewModel.setSearchActive(!uiState.isSearchActive) }) {
+                                Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF00E5FF))
+                            }
+                        },
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = {
+                                    viewModel.updateSearchQuery("")
+                                    viewModel.setSearchActive(false)
+                                }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF94A3B8))
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(if (isTv) 46.dp else 52.dp)
+                            .clickable {
+                                viewModel.setSearchActive(true)
+                            }
+                            .onPreviewKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyDown) {
+                                    if (keyEvent.key == Key.DirectionDown) {
+                                        focusManager.moveFocus(FocusDirection.Down)
+                                        true
+                                    } else if (keyEvent.key == Key.Enter || keyEvent.key == Key.DirectionCenter) {
+                                        viewModel.setSearchActive(true)
+                                        true
+                                    } else false
+                                } else false
+                            },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF00E5FF),
+                            unfocusedBorderColor = Color(0xFF334155),
+                            focusedContainerColor = Color(0xFF0F172A),
+                            unfocusedContainerColor = Color(0xFF0F172A),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // --- 3. Main Content: Search Mode vs Netflix Shelves ---
+                    if (uiState.isSearchActive || uiState.searchQuery.isNotBlank()) {
+                        // --- SEARCH MODE ---
+                        SearchContent(
+                            uiState = uiState,
+                            isTv = isTv,
+                            onChar = { viewModel.onKeyboardChar(it) },
+                            onSpace = { viewModel.onKeyboardSpace() },
+                            onBackspace = { viewModel.onKeyboardBackspace() },
+                            onClear = { viewModel.onKeyboardClear() },
+                            onPlayVideo = onPlayVideo
+                        )
+                    } else {
+                        // --- NETFLIX-STYLE SHELVES ---
+                        ShelvesContent(
+                            uiState = uiState,
+                            isTv = isTv,
+                            subjectsWithVideos = subjectsWithVideos,
+                            onSelectSubject = { subject ->
+                                viewModel.openLessonList(subject)
+                            },
+                            onOpenLessonList = { subject ->
+                                viewModel.openLessonList(subject)
+                            },
+                            onPlayVideo = { video ->
+                                viewModel.recordLastPlayedVideo(video.chatId, video.messageId)
+                                onPlayVideo(video)
+                            },
+                            onTriggerAutoSync = { viewModel.triggerAutoSync() },
+                            onClearLastExitedSubject = { viewModel.clearLastExitedSubject() }
+                        )
+                    }
+                }
             }
         }
     }
@@ -447,9 +453,35 @@ private fun ShelvesContent(
     onSelectSubject: (com.telestudy.tv.domain.model.TelegramChat) -> Unit,
     onOpenLessonList: (com.telestudy.tv.domain.model.TelegramChat) -> Unit = {},
     onPlayVideo: (TelegramVideo) -> Unit,
-    onTriggerAutoSync: () -> Unit
+    onTriggerAutoSync: () -> Unit,
+    onClearLastExitedSubject: () -> Unit = {}
 ) {
+    val shelvesListState = rememberLazyListState()
+    val subjectRowState = rememberLazyListState()
+    val exitSubjectRequester = remember { FocusRequester() }
+    val lastExitedId = uiState.lastExitedSubjectId
+    val displaySubjects = if (subjectsWithVideos.isNotEmpty()) subjectsWithVideos else uiState.subjects.take(20)
+
+    LaunchedEffect(lastExitedId, displaySubjects.isNotEmpty()) {
+        if (lastExitedId != null && displaySubjects.isNotEmpty()) {
+            val targetIdx = displaySubjects.indexOfFirst { it.id == lastExitedId }
+            if (targetIdx >= 0) {
+                try {
+                    val shelf2Index = if (uiState.continuity.lastWatched != null || uiState.continuity.upNext != null || uiState.continueWatching.isNotEmpty()) 1 else 0
+                    shelvesListState.scrollToItem(shelf2Index)
+                    subjectRowState.scrollToItem(targetIdx)
+                } catch (_: Exception) {}
+                delay(120L)
+                try {
+                    exitSubjectRequester.requestFocus()
+                } catch (_: Exception) {}
+                onClearLastExitedSubject()
+            }
+        }
+    }
+
     LazyColumn(
+        state = shelvesListState,
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
@@ -552,6 +584,7 @@ private fun ShelvesContent(
                     }
 
                     LazyRow(
+                        state = subjectRowState,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -563,7 +596,8 @@ private fun ShelvesContent(
                             SubjectCard(
                                 subject = subject,
                                 isSelected = isSelected,
-                                onClick = { onSelectSubject(subject) }
+                                onClick = { onSelectSubject(subject) },
+                                modifier = if (subject.id == lastExitedId) Modifier.focusRequester(exitSubjectRequester) else Modifier
                             )
                         }
                     }
@@ -655,8 +689,13 @@ private fun GroupLessonListContent(
         } else 0
     }
 
-    val gridState = rememberLazyGridState()
+    val columnsCount = if (isTv) 3 else 2
+    val coroutineScope = rememberCoroutineScope()
     val targetLessonRequester = remember { FocusRequester() }
+    val lessonFocusRequesters = remember(lessons, targetIndex) {
+        List(lessons.size) { i -> if (i == targetIndex) targetLessonRequester else FocusRequester() }
+    }
+    val gridState = rememberLazyGridState()
     val backInteractionSource = remember { MutableInteractionSource() }
     val isBackFocused by backInteractionSource.collectIsFocusedAsState()
 
@@ -776,7 +815,7 @@ private fun GroupLessonListContent(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(if (isTv) 3 else 2),
+                columns = GridCells.Fixed(columnsCount),
                 state = gridState,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -788,11 +827,58 @@ private fun GroupLessonListContent(
                     key = { _, video -> "${video.chatId}_${video.messageId}" }
                 ) { index, video ->
                     val progress = progressMap[Pair(video.chatId, video.messageId)]
+                    val itemRequester = lessonFocusRequesters.getOrNull(index) ?: remember { FocusRequester() }
+                    val itemModifier = Modifier
+                        .focusRequester(itemRequester)
+                        .onPreviewKeyEvent { keyEvent ->
+                            if (keyEvent.type == KeyEventType.KeyDown) {
+                                when (keyEvent.key) {
+                                    Key.DirectionRight -> {
+                                        val isEndOfRow = (index + 1) % columnsCount == 0
+                                        val nextIndex = index + 1
+                                        if (isEndOfRow && nextIndex < lessons.size) {
+                                            coroutineScope.launch {
+                                                try {
+                                                    lessonFocusRequesters.getOrNull(nextIndex)?.requestFocus()
+                                                } catch (_: Exception) {
+                                                    try {
+                                                        gridState.scrollToItem(nextIndex)
+                                                        delay(50L)
+                                                        lessonFocusRequesters.getOrNull(nextIndex)?.requestFocus()
+                                                    } catch (_: Exception) {}
+                                                }
+                                            }
+                                            return@onPreviewKeyEvent true
+                                        }
+                                    }
+                                    Key.DirectionLeft -> {
+                                        val isStartOfRow = index % columnsCount == 0
+                                        val prevIndex = index - 1
+                                        if (isStartOfRow && prevIndex >= 0) {
+                                            coroutineScope.launch {
+                                                try {
+                                                    lessonFocusRequesters.getOrNull(prevIndex)?.requestFocus()
+                                                } catch (_: Exception) {
+                                                    try {
+                                                        gridState.scrollToItem(prevIndex)
+                                                        delay(50L)
+                                                        lessonFocusRequesters.getOrNull(prevIndex)?.requestFocus()
+                                                    } catch (_: Exception) {}
+                                                }
+                                            }
+                                            return@onPreviewKeyEvent true
+                                        }
+                                    }
+                                }
+                            }
+                            false
+                        }
+
                     VideoCard(
                         video = video,
                         onClick = { onPlayVideo(video) },
                         watchProgress = progress,
-                        modifier = if (index == targetIndex) Modifier.focusRequester(targetLessonRequester) else Modifier
+                        modifier = itemModifier
                     )
                 }
             }

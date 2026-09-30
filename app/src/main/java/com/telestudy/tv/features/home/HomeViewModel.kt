@@ -20,6 +20,7 @@ data class HomeUiState(
     val subjects: List<TelegramChat> = emptyList(),
     val selectedSubject: TelegramChat? = null,
     val activeLessonListSubject: TelegramChat? = null,
+    val lastExitedSubjectId: Long? = null,
     val lastPlayedVideoByChat: Map<Long, Long> = emptyMap(), // chatId -> messageId
     val lessons: List<TelegramVideo> = emptyList(),
     val continuity: DailyStudyContinuity = DailyStudyContinuity(),
@@ -116,7 +117,16 @@ class HomeViewModel(
     }
 
     fun closeLessonList() {
-        _uiState.update { it.copy(activeLessonListSubject = null) }
+        _uiState.update { current ->
+            current.copy(
+                activeLessonListSubject = null,
+                lastExitedSubjectId = current.activeLessonListSubject?.id ?: current.selectedSubject?.id
+            )
+        }
+    }
+
+    fun clearLastExitedSubject() {
+        _uiState.update { it.copy(lastExitedSubjectId = null) }
     }
 
     fun recordLastPlayedVideo(chatId: Long, messageId: Long) {

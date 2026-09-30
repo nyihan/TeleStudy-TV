@@ -245,4 +245,174 @@ class EntityMappersTest {
         assertEquals("Cell Biology", EntityMappers.extractTopicTitle("video_12345.mp4", "Cell Biology"))
         assertEquals("lecture biology", EntityMappers.extractTopicTitle("lecture_biology.mkv"))
     }
+
+    private fun createTestVideo(messageId: Long, fileName: String): com.telestudy.tv.domain.model.TelegramVideo {
+        return com.telestudy.tv.domain.model.TelegramVideo(
+            messageId = messageId,
+            chatId = -100L,
+            fileId = messageId.toInt(),
+            remoteFileId = "remote_$messageId",
+            fileName = fileName,
+            durationSeconds = 600,
+            width = 1280,
+            height = 720,
+            fileSize = 10_000_000L,
+            mimeType = "video/mp4",
+            date = messageId * 1000L,
+            caption = ""
+        )
+    }
+
+    @Test
+    fun testTC1_baselineDescending_canonicalizesToInstructionalOrder() {
+        val v6 = createTestVideo(6L, "Lesson 6.mp4")
+        val v5 = createTestVideo(5L, "Lesson 5.mp4")
+        val v4 = createTestVideo(4L, "Lesson 4.mp4")
+        val v3 = createTestVideo(3L, "Lesson 3.mp4")
+        val v2 = createTestVideo(2L, "Lesson 2.mp4")
+        val v1 = createTestVideo(1L, "Lesson 1.mp4")
+
+        val input = listOf(v6, v5, v4, v3, v2, v1)
+        val canonical = EntityMappers.toCanonicalLessonSequence(input)
+
+        val expected = listOf(v1, v2, v3, v4, v5, v6)
+        assertEquals(expected.map { it.fileName }, canonical.map { it.fileName })
+    }
+
+    @Test
+    fun testTC2_example1_displacedFive_repairedAndCanonicalized() {
+        // Upload order: 6 -> 4 -> 3 -> 5 -> 2 -> 1 (5 was delayed/retried)
+        val v6 = createTestVideo(1L, "Lesson 6.mp4")
+        val v4 = createTestVideo(2L, "Lesson 4.mp4")
+        val v3 = createTestVideo(3L, "Lesson 3.mp4")
+        val v5 = createTestVideo(4L, "Lesson 5.mp4")
+        val v2 = createTestVideo(5L, "Lesson 2.mp4")
+        val v1 = createTestVideo(6L, "Lesson 1.mp4")
+
+        val input = listOf(v6, v4, v3, v5, v2, v1)
+        val canonical = EntityMappers.toCanonicalLessonSequence(input)
+
+        val expected = listOf(v1, v2, v3, v4, v5, v6)
+        assertEquals(expected.map { it.fileName }, canonical.map { it.fileName })
+    }
+
+    @Test
+    fun testTC3_example2_displacedThree_repairedAndCanonicalized() {
+        // Upload order: 6 -> 5 -> 4 -> 2 -> 3 -> 1 (3 was delayed/retried)
+        val v6 = createTestVideo(1L, "Lesson 6.mp4")
+        val v5 = createTestVideo(2L, "Lesson 5.mp4")
+        val v4 = createTestVideo(3L, "Lesson 4.mp4")
+        val v2 = createTestVideo(4L, "Lesson 2.mp4")
+        val v3 = createTestVideo(5L, "Lesson 3.mp4")
+        val v1 = createTestVideo(6L, "Lesson 1.mp4")
+
+        val input = listOf(v6, v5, v4, v2, v3, v1)
+        val canonical = EntityMappers.toCanonicalLessonSequence(input)
+
+        val expected = listOf(v1, v2, v3, v4, v5, v6)
+        assertEquals(expected.map { it.fileName }, canonical.map { it.fileName })
+    }
+
+    @Test
+    fun testTC4_example3_displacedFour_repairedAndCanonicalized() {
+        // Upload order: 6 -> 5 -> 3 -> 4 -> 2 -> 1 (4 was delayed/retried)
+        val v6 = createTestVideo(1L, "Lesson 6.mp4")
+        val v5 = createTestVideo(2L, "Lesson 5.mp4")
+        val v3 = createTestVideo(3L, "Lesson 3.mp4")
+        val v4 = createTestVideo(4L, "Lesson 4.mp4")
+        val v2 = createTestVideo(5L, "Lesson 2.mp4")
+        val v1 = createTestVideo(6L, "Lesson 1.mp4")
+
+        val input = listOf(v6, v5, v3, v4, v2, v1)
+        val canonical = EntityMappers.toCanonicalLessonSequence(input)
+
+        val expected = listOf(v1, v2, v3, v4, v5, v6)
+        assertEquals(expected.map { it.fileName }, canonical.map { it.fileName })
+    }
+
+    @Test
+    fun testTC5_ascendingWithDisplacedItem_repaired() {
+        // Upload order: 1 -> 2 -> 5 -> 3 -> 4 -> 6 (5 uploaded early/out of turn)
+        val v1 = createTestVideo(1L, "Lesson 1.mp4")
+        val v2 = createTestVideo(2L, "Lesson 2.mp4")
+        val v5 = createTestVideo(3L, "Lesson 5.mp4")
+        val v3 = createTestVideo(4L, "Lesson 3.mp4")
+        val v4 = createTestVideo(5L, "Lesson 4.mp4")
+        val v6 = createTestVideo(6L, "Lesson 6.mp4")
+
+        val input = listOf(v1, v2, v5, v3, v4, v6)
+        val canonical = EntityMappers.toCanonicalLessonSequence(input)
+
+        val expected = listOf(v1, v2, v3, v4, v5, v6)
+        assertEquals(expected.map { it.fileName }, canonical.map { it.fileName })
+    }
+
+    @Test
+    fun testTC6_canonicalNextPrevBoundaries() {
+        val v1 = createTestVideo(1L, "Lesson 1.mp4")
+        val v2 = createTestVideo(2L, "Lesson 2.mp4")
+        val v3 = createTestVideo(3L, "Lesson 3.mp4")
+        val v4 = createTestVideo(4L, "Lesson 4.mp4")
+        val v5 = createTestVideo(5L, "Lesson 5.mp4")
+        val v6 = createTestVideo(6L, "Lesson 6.mp4")
+
+        // Input uploaded with error: 6 -> 4 -> 3 -> 5 -> 2 -> 1
+        val canonical = EntityMappers.toCanonicalLessonSequence(listOf(v6, v4, v3, v5, v2, v1))
+
+        fun getNext(current: com.telestudy.tv.domain.model.TelegramVideo): com.telestudy.tv.domain.model.TelegramVideo? {
+            val idx = canonical.indexOfFirst { it.messageId == current.messageId }
+            return if (idx != -1 && idx + 1 < canonical.size) canonical[idx + 1] else null
+        }
+
+        fun getPrev(current: com.telestudy.tv.domain.model.TelegramVideo): com.telestudy.tv.domain.model.TelegramVideo? {
+            val idx = canonical.indexOfFirst { it.messageId == current.messageId }
+            return if (idx > 0) canonical[idx - 1] else null
+        }
+
+        // Sequential Next navigation
+        assertEquals(v2.fileName, getNext(v1)?.fileName)
+        assertEquals(v3.fileName, getNext(v2)?.fileName)
+        assertEquals(v4.fileName, getNext(v3)?.fileName)
+        assertEquals(v5.fileName, getNext(v4)?.fileName)
+        assertEquals(v6.fileName, getNext(v5)?.fileName)
+        assertNull("Next from final lesson must be null", getNext(v6))
+
+        // Sequential Previous navigation
+        assertNull("Prev from first lesson must be null", getPrev(v1))
+        assertEquals(v1.fileName, getPrev(v2)?.fileName)
+        assertEquals(v2.fileName, getPrev(v3)?.fileName)
+        assertEquals(v3.fileName, getPrev(v4)?.fileName)
+        assertEquals(v4.fileName, getPrev(v5)?.fileName)
+        assertEquals(v5.fileName, getPrev(v6)?.fileName)
+    }
+
+    @Test
+    fun testTC7_unnumberedItemsRetainAnchorPositions() {
+        val intro = createTestVideo(10L, "Course Introduction & Syllabus.mp4")
+        val v6 = createTestVideo(1L, "Lesson 6.mp4")
+        val v4 = createTestVideo(2L, "Lesson 4.mp4")
+        val v3 = createTestVideo(3L, "Lesson 3.mp4")
+        val v5 = createTestVideo(4L, "Lesson 5.mp4")
+        val v2 = createTestVideo(5L, "Lesson 2.mp4")
+        val v1 = createTestVideo(6L, "Lesson 1.mp4")
+        val outro = createTestVideo(20L, "Final Course Review & Outro.mp4")
+
+        val input = listOf(intro, v6, v4, v3, v5, v2, v1, outro)
+        val canonical = EntityMappers.toCanonicalLessonSequence(input)
+
+        val expected = listOf(intro, v1, v2, v3, v4, v5, v6, outro)
+        assertEquals(expected.map { it.fileName }, canonical.map { it.fileName })
+    }
+
+    @Test
+    fun testUnnumberedListRemainsUnchanged() {
+        val doc1 = createTestVideo(1L, "General Science Overview.mp4")
+        val doc2 = createTestVideo(2L, "Teacher Welcome Note.mp4")
+        val doc3 = createTestVideo(3L, "Midterm Exam Rules.mp4")
+
+        val input = listOf(doc1, doc2, doc3)
+        val canonical = EntityMappers.toCanonicalLessonSequence(input)
+
+        assertEquals(input, canonical)
+    }
 }

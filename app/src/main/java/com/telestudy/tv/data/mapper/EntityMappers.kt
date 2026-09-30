@@ -241,6 +241,135 @@ object EntityMappers {
     }
 
     /**
+     * Reconstructs the canonical instructional sequence (Lesson 1 -> Lesson N) for a list of video messages.
+     *
+     * 1. Preserves unnumbered videos (e.g. Intro, Outro, Reviews) at their original relative anchor indices.
+     * 2. Detects the natural sequence direction (descending N -> 1 vs ascending 1 -> N) via adjacent pair voting.
+     * 3. Repairs misplaced/displaced outlier lessons caused by Telegram upload failures or retries using
+     *    Longest Monotonic Subsequence (LMS) repositioning.
+     * 4. Canonicalizes descending instructional series (N -> 1) into forward instructional viewing order (1 -> N).
+     * 5. Non-destructive: Does NOT perform a naive global sortBy, preserving original relative positioning of non-numbered items.
+     */
+    fun toCanonicalLessonSequence(videos: List<TelegramVideo>): List<TelegramVideo> {
+        if (videos.size <= 1) return videos
+
+        // 1. Identify videos that have an extractable lesson number
+        val numberedIndices = mutableListOf<Int>()
+        val numberedItems = mutableListOf<Pair<TelegramVideo, Int>>()
+
+        videos.forEachIndexed { index, video ->
+            val num = extractLessonNumber(video.fileName) ?: extractLessonNumber(video.caption)
+            if (num != null) {
+                numberedIndices.add(index)
+                numberedItems.add(video to num)
+            }
+        }
+
+        // If 0 or 1 numbered videos, no sequence reordering is needed
+        if (numberedItems.size <= 1) return videos
+
+        // 2. Determine sequence orientation (descending vs ascending)
+        var ascVotes = 0
+        var descVotes = 0
+        for (i in 0 until numberedItems.size - 1) {
+            val diff = numberedItems[i + 1].second - numberedItems[i].second
+            if (diff > 0) ascVotes++
+            else if (diff < 0) descVotes++
+        }
+        val isDescending = if (descVotes != ascVotes) {
+            descVotes > ascVotes
+        } else {
+            numberedItems.first().second > numberedItems.last().second
+        }
+
+        // 3. Compute Longest Monotonic Subsequence (LMS)
+        val n = numberedItems.size
+        val dp = IntArray(n) { 1 }
+        val parent = IntArray(n) { -1 }
+
+        for (i in 0 until n) {
+            for (j in 0 until i) {
+                val isMonotonic = if (isDescending) {
+                    numberedItems[j].second >= numberedItems[i].second
+                } else {
+                    numberedItems[j].second <= numberedItems[i].second
+                }
+                if (isMonotonic && dp[j] + 1 > dp[i]) {
+                    dp[i] = dp[j] + 1
+                    parent[i] = j
+                }
+            }
+        }
+
+        var bestEnd = 0
+        for (i in 1 until n) {
+            if (dp[i] > dp[bestEnd]) {
+                bestEnd = i
+            }
+        }
+
+        val lmsIndices = mutableSetOf<Int>()
+        var curr = bestEnd
+        while (curr != -1) {
+            lmsIndices.add(curr)
+            curr = parent[curr]
+        }
+
+        // 4. Construct the repaired list of numbered videos
+        // Start with the LMS elements in their relative order
+        val repairedList = mutableListOf<Pair<TelegramVideo, Int>>()
+        for (i in 0 until n) {
+            if (i in lmsIndices) {
+                repairedList.add(numberedItems[i])
+            }
+        }
+
+        // Gather outliers (items not in the LMS)
+        val outliers = mutableListOf<Pair<TelegramVideo, Int>>()
+        for (i in 0 until n) {
+            if (i !in lmsIndices) {
+                outliers.add(numberedItems[i])
+            }
+        }
+
+        // Reposition outliers into their proper logical positions
+        if (isDescending) {
+            outliers.sortByDescending { it.second }
+            for (outlier in outliers) {
+                val insertIndex = repairedList.indexOfFirst { it.second < outlier.second }
+                if (insertIndex != -1) {
+                    repairedList.add(insertIndex, outlier)
+                } else {
+                    repairedList.add(outlier)
+                }
+            }
+        } else {
+            outliers.sortBy { it.second }
+            for (outlier in outliers) {
+                val insertIndex = repairedList.indexOfFirst { it.second > outlier.second }
+                if (insertIndex != -1) {
+                    repairedList.add(insertIndex, outlier)
+                } else {
+                    repairedList.add(outlier)
+                }
+            }
+        }
+
+        // 5. Canonicalize to forward instructional order (1 -> N)
+        if (isDescending) {
+            repairedList.reverse()
+        }
+
+        // 6. Reintegrate into original video list preserving unnumbered video anchor positions
+        val result = videos.toMutableList()
+        for (k in numberedIndices.indices) {
+            result[numberedIndices[k]] = repairedList[k].first
+        }
+
+        return result
+    }
+
+    /**
      * Natural comparator ordering lessons sequentially (Lesson 1 -> Lesson 36).
      * Falls back to chronological message order when no lesson number can be extracted.
      */

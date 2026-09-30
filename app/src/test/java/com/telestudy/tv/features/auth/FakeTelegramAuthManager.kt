@@ -79,10 +79,17 @@ class FakeTelegramAuthManager : TelegramAuthManager {
         }
     }
 
+    var manualQrResponse = false
+    var pendingQrCallback: ((Result<Unit>) -> Unit)? = null
+
     override fun requestQrCode(onResult: (Result<Unit>) -> Unit) {
         requestQrCodeCallCount++
-        _authState.value = AuthState.WaitOtherDeviceConfirmation(link = mockQrLink)
-        onResult(Result.success(Unit))
+        if (manualQrResponse) {
+            pendingQrCallback = onResult
+        } else {
+            _authState.value = AuthState.WaitOtherDeviceConfirmation(link = mockQrLink)
+            onResult(Result.success(Unit))
+        }
     }
 
     override fun resendCode(onResult: (Result<Unit>) -> Unit) {

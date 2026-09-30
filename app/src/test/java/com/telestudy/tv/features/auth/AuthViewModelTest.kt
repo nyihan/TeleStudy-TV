@@ -25,7 +25,7 @@ class AuthViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         fakeAuthManager = FakeTelegramAuthManager()
-        viewModel = AuthViewModel(fakeAuthManager)
+        viewModel = AuthViewModel(fakeAuthManager, testDispatcher)
         testDispatcher.scheduler.advanceUntilIdle()
     }
 
@@ -193,5 +193,59 @@ class AuthViewModelTest {
         assertTrue(viewModel.uiState.value.isPasswordVisible)
         viewModel.togglePasswordVisibility()
         assertFalse(viewModel.uiState.value.isPasswordVisible)
+    }
+
+    @Test
+    fun testQrSelectedDuringWaitParameters_defersRequestUntilWaitPhoneNumber() {
+        val fakeAuth = FakeTelegramAuthManager()
+        fakeAuth._authState.value = AuthState.WaitParameters
+        val vm = AuthViewModel(fakeAuth, testDispatcher)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        vm.selectTab(AuthTab.QR)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Request must NOT be sent while TDLib is in WaitParameters
+        assertEquals(0, fakeAuth.requestQrCodeCallCount)
+        assertNull(vm.uiState.value.qrBitmap)
+
+        // TDLib transitions to WaitPhoneNumber
+        fakeAuth._authState.value = AuthState.WaitPhoneNumber
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Deferred request must be triggered automatically once WaitPhoneNumber is reached
+        assertEquals(1, fakeAuth.requestQrCodeCallCount)
+        assertNotNull(vm.uiState.value.qrBitmap)
+    }
+
+    @Test
+    fun testQrSelected_singleFlightGuardPreventsConcurrentRequests() {
+        val fakeAuth = FakeTelegramAuthManager()
+        fakeAuth.manualQrResponse = true
+        val vm = AuthViewModel(fakeAuth, testDispatcher)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // First QR selection initiates request
+        vm.selectTab(AuthTab.QR)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, fakeAuth.requestQrCodeCallCount)
+
+        // Repeated QR selection while first is in-flight must be ignored
+        vm.selectTab(AuthTab.QR)
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals("In-flight request must prevent duplicate requestQrCode calls", 1, fakeAuth.requestQrCodeCallCount)
+
+        // Complete the first request
+        fakeAuth.pendingQrCallback?.invoke(Result.success(Unit))
+        testDispatcher.scheduler.advanceUntilIdle()
+    }
+
+    @Test
+    fun testQrCodeLinkReceived_generatesQrBitmap() {
+        viewModel.selectTab(AuthTab.QR)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, fakeAuthManager.requestQrCodeCallCount)
+        assertNotNull("QR bitmap must be generated upon receiving QR link", viewModel.uiState.value.qrBitmap)
     }
 }

@@ -7,6 +7,8 @@ import com.telestudy.tv.core.tdlib.AuthState
 import com.telestudy.tv.core.tdlib.TdlibAuthException
 import com.telestudy.tv.core.tdlib.TelegramAuthManager
 import com.telestudy.tv.core.util.QrGenerator
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,13 +43,16 @@ data class AuthUiState(
  * Shared ViewModel managing Telegram authentication lifecycle across Phone, Tablet, and Android TV.
  */
 class AuthViewModel(
-    private val authManager: TelegramAuthManager
+    private val authManager: TelegramAuthManager,
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
     private var countdownJob: Job? = null
+    private var isQrRequestInFlight = false
+    private var isQrRequestDeferred = false
 
     init {
         observeAuthState()
@@ -60,20 +65,31 @@ class AuthViewModel(
                 _uiState.update { current ->
                     current.copy(
                         authState = state,
-                        isLoading = false,
+                        isLoading = if (state is AuthState.WaitPhoneNumber && isQrRequestDeferred) current.isLoading else false,
                         errorMessage = if (state is AuthState.Error) formatErrorMessage(state.code, state.message) else current.errorMessage
                     )
                 }
 
                 when (state) {
+                    is AuthState.WaitPhoneNumber -> {
+                        // If QR tab is currently selected and a request was deferred (or we need to initiate QR)
+                        if (_uiState.value.selectedTab == AuthTab.QR && (isQrRequestDeferred || _uiState.value.qrBitmap == null)) {
+                            Timber.i("TDLib reached WaitPhoneNumber and QR tab is active. Executing deferred QR request.")
+                            requestQrCode()
+                        }
+                    }
                     is AuthState.WaitCode -> {
                         startResendCountdown()
                     }
                     is AuthState.WaitOtherDeviceConfirmation -> {
+                        isQrRequestDeferred = false
+                        isQrRequestInFlight = false
                         generateQrCode(state.link)
                     }
                     is AuthState.Ready -> {
                         countdownJob?.cancel()
+                        isQrRequestDeferred = false
+                        isQrRequestInFlight = false
                         _uiState.update { it.copy(code = "", password = "", resendCountdown = 0) }
                     }
                     else -> {}
@@ -91,10 +107,11 @@ class AuthViewModel(
     }
 
     fun selectTab(tab: AuthTab) {
-        _uiState.update { it.copy(selectedTab = tab, errorMessage = null, isLoading = false) }
+        _uiState.update { it.copy(selectedTab = tab, errorMessage = null) }
         if (tab == AuthTab.QR) {
             requestQrCode()
         } else {
+            isQrRequestDeferred = false
             if (_uiState.value.authState is AuthState.WaitOtherDeviceConfirmation) {
                 authManager.cancelQrCode()
             }
@@ -201,19 +218,52 @@ class AuthViewModel(
     }
 
     fun requestQrCode() {
-        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-        authManager.requestQrCode { result ->
-            result.onSuccess {
-                _uiState.update { it.copy(isLoading = false) }
+        val currentAuthState = authManager.authState.value
+
+        // 1. If state is already waiting for confirmation and has link, ensure bitmap is present
+        if (currentAuthState is AuthState.WaitOtherDeviceConfirmation) {
+            if (_uiState.value.qrBitmap == null && currentAuthState.link.isNotBlank()) {
+                generateQrCode(currentAuthState.link)
             }
-            result.onFailure { ex ->
-                val message = if (ex is TdlibAuthException) {
-                    formatErrorMessage(ex.code, ex.message ?: "")
-                } else {
-                    ex.message ?: "Failed to generate QR code"
+            return
+        }
+
+        // 2. If TDLib is still initializing (Initial or WaitParameters), defer until WaitPhoneNumber
+        if (currentAuthState is AuthState.Initial || currentAuthState is AuthState.WaitParameters) {
+            isQrRequestDeferred = true
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            Timber.d("TDLib is initializing (%s). Deferring QR request until WaitPhoneNumber.", currentAuthState.javaClass.simpleName)
+            return
+        }
+
+        // 3. Single-flight guard: at most ONE active QR request
+        if (isQrRequestInFlight) {
+            Timber.d("QR request already in flight. Skipping duplicate request.")
+            return
+        }
+
+        // 4. Dispatch to TDLib only when in WaitPhoneNumber
+        if (currentAuthState is AuthState.WaitPhoneNumber) {
+            isQrRequestInFlight = true
+            isQrRequestDeferred = false
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            Timber.i("Dispatching QR code authentication request to TDLib...")
+            authManager.requestQrCode { result ->
+                isQrRequestInFlight = false
+                result.onSuccess {
+                    _uiState.update { it.copy(isLoading = false) }
                 }
-                _uiState.update { it.copy(isLoading = false, errorMessage = message) }
+                result.onFailure { ex ->
+                    val message = if (ex is TdlibAuthException) {
+                        formatErrorMessage(ex.code, ex.message ?: "")
+                    } else {
+                        ex.message ?: "Failed to generate QR code"
+                    }
+                    _uiState.update { it.copy(isLoading = false, errorMessage = message) }
+                }
             }
+        } else {
+            Timber.w("Cannot request QR code in state: %s", currentAuthState.javaClass.simpleName)
         }
     }
 
@@ -249,7 +299,7 @@ class AuthViewModel(
     }
 
     private fun generateQrCode(link: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(defaultDispatcher) {
             val bitmap = QrGenerator.generateQrBitmap(link, sizePx = 600)
             _uiState.update { it.copy(qrLink = link, qrBitmap = bitmap, isLoading = false) }
         }
